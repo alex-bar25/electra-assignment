@@ -1,37 +1,15 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
-	"log/slog"
 	"net/http"
 
 	"electra-assignment/internal/domain"
 	"electra-assignment/internal/service"
 )
 
-type handler struct {
-	station *service.Service
-	logger  *slog.Logger
-}
-
 type healthResponse struct {
 	Status string `json:"status"`
-}
-
-type errorResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
-func New(station *service.Service, logger *slog.Logger) http.Handler {
-	api := handler{station: station, logger: logger}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", api.health)
-	mux.HandleFunc("PUT /api/v1/station/config", api.configureStation)
-	mux.HandleFunc("GET /api/v1/station", api.getStation)
-	return mux
 }
 
 func (api handler) configureStation(response http.ResponseWriter, request *http.Request) {
@@ -74,31 +52,4 @@ func (api handler) getStation(response http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	api.writeJSON(response, http.StatusOK, state)
-}
-
-func (api handler) writeError(response http.ResponseWriter, status int, code, message string) {
-	api.writeJSON(response, status, errorResponse{Code: code, Message: message})
-}
-
-func decodeJSON(request *http.Request, target any) error {
-	decoder := json.NewDecoder(request.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		if err == nil {
-			return errors.New("request body must contain one JSON object")
-		}
-		return err
-	}
-	return nil
-}
-
-func (api handler) writeJSON(response http.ResponseWriter, status int, body any) {
-	response.Header().Set("Content-Type", "application/json")
-	response.WriteHeader(status)
-	if err := json.NewEncoder(response).Encode(body); err != nil {
-		api.logger.Error("encode response", "error", err)
-	}
 }
