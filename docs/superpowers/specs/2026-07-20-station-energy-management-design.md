@@ -4,7 +4,7 @@
 
 Build one small Go HTTP service that manages one EV charging station in memory. The core supports station configuration, session start/update/stop, synchronous allocation recomputation, and station status reads.
 
-The first version deliberately excludes minimum-power admission, BESS behavior, dynamic hardware availability updates, persistence, authentication, and external infrastructure.
+The core includes minimum-power admission so sessions never receive an unusable trickle. It deliberately excludes BESS behavior, dynamic hardware availability updates, persistence, authentication, and external infrastructure until the required core is complete.
 
 ## Architecture
 
@@ -21,17 +21,21 @@ Use only the Go standard library and four focused internal packages:
 
 A station configuration has an ID, grid capacity, and a list of chargers. A charger has an ID, maximum power, availability, and connectors. A connector has an ID, type, maximum power, and availability. IDs are unique within their resource type.
 
-An active session has an ID, connector ID, requested power, vehicle maximum power, an optional charging-curve limit, assigned power, and timestamps. Its effective demand is the minimum of its positive applicable limits: requested, vehicle, connector, optional curve, and charger capacity.
+An active session has an ID, connector ID, requested power, vehicle maximum power, an optional charging-curve limit, minimum useful power, effective demand, assigned power, status, and timestamps. Its effective demand is the minimum of its positive applicable limits: requested, vehicle, connector, optional curve, and charger capacity.
 
-Configuration validation rejects blank IDs, non-positive capacities, duplicate charger or connector IDs, and chargers without connectors. Session boundary validation rejects blank IDs, non-positive required power values, non-positive provided curve limits, unknown or unavailable connectors, duplicate active session IDs, and occupied connectors.
+`MinimumPowerKw` defaults to `5 kW` when omitted or zero. A positive session-specific value overrides the default. A session minimum must not exceed its effective demand. Session status is either `charging` or `waiting_for_power`.
+
+Configuration validation rejects blank IDs, non-positive capacities, duplicate charger or connector IDs, and chargers without connectors. Session boundary validation rejects blank IDs, non-positive required power values, non-positive provided curve limits, negative or non-finite minimum power, a normalized minimum above effective demand, unknown or unavailable connectors, duplicate active session IDs, and occupied connectors.
 
 ## Allocation
 
 The allocator receives an immutable view of configuration and active sessions and returns assignments keyed by session ID. It does not mutate shared state.
 
-Eligible sessions are sorted by stable IDs. Allocation uses deterministic progressive filling: raise all unconstrained sessions equally until station capacity, a session effective-demand cap, or a shared charger cap is reached. Freeze constrained sessions and continue redistributing remaining capacity among eligible sessions. This produces max-min fairness while respecting station, charger, connector, vehicle, request, and charging-curve limits.
+Eligible sessions are considered for admission by start time and then session ID. Admission reserves each session's minimum against remaining station and charger capacity. A session that cannot reserve its minimum remains active with `waiting_for_power` status and receives `0 kW`.
 
-Unavailable hardware receives zero allocation. Output ordering is stable and no decision relies on Go map iteration order. Floating-point comparisons use one small package-level epsilon.
+Admitted sessions begin at their reserved minimum. Allocation then uses deterministic progressive filling for surplus power: raise all unconstrained admitted sessions equally until station capacity, a session effective-demand cap, or a shared charger cap is reached. Freeze constrained sessions and continue redistributing remaining capacity. This keeps admission deterministic and shares surplus fairly while respecting station, charger, connector, vehicle, request, and charging-curve limits.
+
+Unavailable hardware and waiting sessions receive zero allocation. Output ordering is stable and no decision relies on Go map iteration order. Floating-point comparisons use one small package-level epsilon.
 
 ## State and request flow
 
@@ -57,8 +61,8 @@ Handlers decode JSON, call the service, and encode responses. Domain/service err
 Tests cover behavior, not declarations or implementation details:
 
 - A small table of meaningful configuration and session validation failures.
-- Allocation scenarios for one session, fair sharing, redistribution, effective limits, shared charger limits, grid limits, and deterministic insertion order.
-- Service lifecycle scenarios proving start/update/stop recompute immediately and reject invalid operations.
+- Allocation scenarios for one session, fair sharing, redistribution, effective limits, shared charger limits, grid limits, minimum admission, deterministic priority, and deterministic insertion order.
+- Service lifecycle scenarios proving start/update/stop recompute immediately, reject invalid operations, and reconsider waiting sessions when capacity changes.
 - A compact handler test set for routing, status codes, and the main successful flow.
 
 No tests are added for plain structs, JSON tags in isolation, getters, constructors without behavior, or exhaustive permutations of equivalent cases. Tests avoid mocks where direct calls are simpler.
@@ -69,9 +73,10 @@ Implementation proceeds in reviewable chunks:
 
 1. Go module, domain types, validation, and focused validation tests.
 2. Pure allocator and its core invariant tests.
-3. Mutex-protected service and lifecycle tests.
-4. HTTP API and focused handler tests.
-5. Server wiring, Docker files, example script, README, and final verification.
+3. Minimum-power admission and focused allocator/service tests.
+4. Mutex-protected service update/stop lifecycle tests.
+5. HTTP API and focused handler tests.
+6. Server wiring, Docker files, example script, README, and final verification.
 
 After each chunk, format and run the relevant focused tests. Run `go test ./...`, `go test -race ./...`, `go vet ./...`, and a clean build before completion.
 
@@ -82,4 +87,6 @@ After each chunk, format and run the relevant focused tests. Run `go test ./...`
 - Stopped sessions are removed from active state rather than retained as history.
 - Process restart loses state by design.
 - A single coarse lock favors clarity and correctness over unnecessary concurrency within one station.
-- Optional features are reconsidered only after the complete core is working, tested, runnable, and documented.
+- The `5 kW` default is an assignment-level useful-power assumption; callers may supply a vehicle-specific override.
+- Admission priority is start time and then session ID. It is used only when every session minimum cannot be satisfied; ordinary surplus sharing has no first-come-first-served priority.
+- BESS is reconsidered only after the complete core is working, tested, runnable, and documented.
