@@ -105,3 +105,23 @@ func TestSessionValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionValidateRejectsNegativeMinimumPower(t *testing.T) {
+	session := Session{
+		ID: "session-1", ConnectorID: "connector-1",
+		RequestedPowerKw: 100, VehicleMaxPowerKw: 100,
+		MinimumPowerKw: -1,
+	}
+	if err := session.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want an error")
+	}
+}
+
+func TestNormalizeMinimumPowerKw(t *testing.T) {
+	if got := NormalizeMinimumPowerKw(0); got != 5 {
+		t.Fatalf("NormalizeMinimumPowerKw(0) = %v, want 5", got)
+	}
+	if got := NormalizeMinimumPowerKw(12); got != 12 {
+		t.Fatalf("NormalizeMinimumPowerKw(12) = %v, want 12", got)
+	}
+}

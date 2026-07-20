@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"electra-assignment/internal/domain"
 )
@@ -122,6 +123,41 @@ func TestAllocateProducesStableOutput(t *testing.T) {
 	}
 }
 
+func TestAllocateWaitsWhenMinimumCannotBeReserved(t *testing.T) {
+	config := stationWithOneCharger(5, 100, 100, 100)
+	start := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	first := testSession("session-1", "connector-1", 100)
+	first.StartedAt = start
+	second := testSession("session-2", "connector-2", 100)
+	second.StartedAt = start.Add(time.Second)
+
+	assignments := Allocate(config, []domain.Session{second, first})
+	assertAssignment(t, assignments, "session-1", 5, domain.SessionStatusCharging)
+	assertAssignment(t, assignments, "session-2", 0, domain.SessionStatusWaitingForPower)
+}
+
+func TestAllocateUsesSessionIDToBreakAdmissionTies(t *testing.T) {
+	config := stationWithOneCharger(5, 100, 100, 100)
+	sessionB := testSession("session-b", "connector-1", 100)
+	sessionA := testSession("session-a", "connector-2", 100)
+
+	assignments := Allocate(config, []domain.Session{sessionB, sessionA})
+	assertAssignment(t, assignments, "session-a", 5, domain.SessionStatusCharging)
+	assertAssignment(t, assignments, "session-b", 0, domain.SessionStatusWaitingForPower)
+}
+
+func TestAllocateSharesSurplusAfterMinimums(t *testing.T) {
+	config := stationWithOneCharger(30, 100, 100, 100)
+	first := testSession("session-1", "connector-1", 100)
+	first.MinimumPowerKw = 10
+	second := testSession("session-2", "connector-2", 100)
+	second.MinimumPowerKw = 5
+
+	assignments := Allocate(config, []domain.Session{first, second})
+	assertAssignment(t, assignments, "session-1", 17.5, domain.SessionStatusCharging)
+	assertAssignment(t, assignments, "session-2", 12.5, domain.SessionStatusCharging)
+}
+
 func stationWithOneCharger(grid, charger float64, connectors ...float64) domain.StationConfig {
 	connectorConfigs := make([]domain.ConnectorConfig, 0, len(connectors))
 	for index, maximum := range connectors {
@@ -159,6 +195,22 @@ func assertPower(t *testing.T, assignments []Assignment, sessionID string, want 
 		if assignment.SessionID == sessionID {
 			if difference := assignment.AssignedPowerKw - want; difference < -testEpsilon || difference > testEpsilon {
 				t.Fatalf("session %q assigned power = %v, want %v", sessionID, assignment.AssignedPowerKw, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("assignment for session %q not found", sessionID)
+}
+
+func assertAssignment(t *testing.T, assignments []Assignment, sessionID string, wantPower float64, wantStatus domain.SessionStatus) {
+	t.Helper()
+	for _, assignment := range assignments {
+		if assignment.SessionID == sessionID {
+			if difference := assignment.AssignedPowerKw - wantPower; difference < -testEpsilon || difference > testEpsilon {
+				t.Fatalf("session %q assigned power = %v, want %v", sessionID, assignment.AssignedPowerKw, wantPower)
+			}
+			if assignment.Status != wantStatus {
+				t.Fatalf("session %q status = %q, want %q", sessionID, assignment.Status, wantStatus)
 			}
 			return
 		}

@@ -89,6 +89,9 @@ func TestServiceStartSessionRecomputesBeforeReturning(t *testing.T) {
 	if err != nil || first.AssignedPowerKw != 100 {
 		t.Fatalf("first StartSession() = (%#v, %v), want 100 kW", first, err)
 	}
+	if first.MinimumPowerKw != 5 || first.EffectiveDemandKw != 100 || first.Status != domain.SessionStatusCharging {
+		t.Fatalf("first session = %#v, want normalized minimum, effective demand, and charging status", first)
+	}
 
 	second, err := service.StartSession(testSession("session-2", "connector-2", 100))
 	if err != nil || second.AssignedPowerKw != 50 {
@@ -106,6 +109,22 @@ func TestServiceStartSessionRecomputesBeforeReturning(t *testing.T) {
 	}
 }
 
+func TestServiceStartSessionCanWaitForMinimumPower(t *testing.T) {
+	config := testStationConfig()
+	config.GridCapacityKw = 5
+	service := configuredService(t, config)
+	if _, err := service.StartSession(testSession("session-1", "connector-1", 100)); err != nil {
+		t.Fatalf("first StartSession() error = %v", err)
+	}
+	waiting, err := service.StartSession(testSession("session-2", "connector-2", 100))
+	if err != nil {
+		t.Fatalf("second StartSession() error = %v", err)
+	}
+	if waiting.AssignedPowerKw != 0 || waiting.Status != domain.SessionStatusWaitingForPower {
+		t.Fatalf("waiting session = %#v, want waiting at 0 kW", waiting)
+	}
+}
+
 func TestServiceStartSessionRejectsInvalidOperations(t *testing.T) {
 	t.Run("station not configured", func(t *testing.T) {
 		_, err := New().StartSession(testSession("session-1", "connector-1", 100))
@@ -119,6 +138,14 @@ func TestServiceStartSessionRejectsInvalidOperations(t *testing.T) {
 		_, err := service.StartSession(testSession("session-1", "connector-1", 0))
 		if err == nil {
 			t.Fatal("error = nil, want validation error")
+		}
+	})
+
+	t.Run("minimum exceeds effective demand", func(t *testing.T) {
+		service := configuredService(t, testStationConfig())
+		_, err := service.StartSession(testSession("session-1", "connector-1", 4))
+		if !errors.Is(err, ErrMinimumExceedsDemand) {
+			t.Fatalf("error = %v, want ErrMinimumExceedsDemand", err)
 		}
 	})
 

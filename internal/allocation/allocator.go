@@ -2,6 +2,7 @@ package allocation
 
 import (
 	"sort"
+	"time"
 
 	"electra-assignment/internal/domain"
 )
@@ -9,8 +10,10 @@ import (
 const epsilon = 1e-9
 
 type Assignment struct {
-	SessionID       string  `json:"sessionId"`
-	AssignedPowerKw float64 `json:"assignedPowerKw"`
+	SessionID         string               `json:"sessionId"`
+	EffectiveDemandKw float64              `json:"effectiveDemandKw"`
+	AssignedPowerKw   float64              `json:"assignedPowerKw"`
+	Status            domain.SessionStatus `json:"status"`
 }
 
 type connectorLocation struct {
@@ -22,13 +25,18 @@ type allocationState struct {
 	sessionID string
 	chargerID string
 	demandKw  float64
+	minimumKw float64
+	startedAt time.Time
 	assigned  float64
+	eligible  bool
 	active    bool
+	status    domain.SessionStatus
 }
 
 func Allocate(config domain.StationConfig, sessions []domain.Session) []Assignment {
 	states, remainingByCharger := prepareAllocation(config, sessions)
-	distributePower(states, config.GridCapacityKw, remainingByCharger)
+	remainingGrid := admitSessions(states, config.GridCapacityKw, remainingByCharger)
+	distributePower(states, remainingGrid, remainingByCharger)
 	return assignmentsFromStates(states)
 }
 
@@ -45,8 +53,13 @@ func prepareAllocation(config domain.StationConfig, sessions []domain.Session) (
 		location, exists := locations[session.ConnectorID]
 		if exists && location.charger.Status == domain.OperationalStatusAvailable && location.connector.Status == domain.OperationalStatusAvailable {
 			state.chargerID = location.charger.ID
-			state.demandKw = effectiveDemand(session, location.connector.MaxPowerKw)
-			state.active = state.demandKw > epsilon
+			state.demandKw = domain.EffectiveDemandKw(session, location.connector.MaxPowerKw)
+			state.minimumKw = domain.NormalizeMinimumPowerKw(session.MinimumPowerKw)
+			state.startedAt = session.StartedAt
+			state.eligible = state.demandKw > epsilon
+			if state.eligible {
+				state.status = domain.SessionStatusWaitingForPower
+			}
 		}
 		states = append(states, state)
 	}
@@ -54,6 +67,37 @@ func prepareAllocation(config domain.StationConfig, sessions []domain.Session) (
 		return states[i].sessionID < states[j].sessionID
 	})
 	return states, remainingByCharger
+}
+
+func admitSessions(states []allocationState, remainingGrid float64, remainingByCharger map[string]float64) float64 {
+	priority := make([]int, 0, len(states))
+	for index := range states {
+		if states[index].eligible {
+			priority = append(priority, index)
+		}
+	}
+	sort.Slice(priority, func(i, j int) bool {
+		left, right := states[priority[i]], states[priority[j]]
+		if left.startedAt.Equal(right.startedAt) {
+			return left.sessionID < right.sessionID
+		}
+		return left.startedAt.Before(right.startedAt)
+	})
+
+	for _, index := range priority {
+		state := &states[index]
+		if state.minimumKw > state.demandKw+epsilon ||
+			state.minimumKw > remainingGrid+epsilon ||
+			state.minimumKw > remainingByCharger[state.chargerID]+epsilon {
+			continue
+		}
+		state.assigned = state.minimumKw
+		state.status = domain.SessionStatusCharging
+		state.active = state.demandKw-state.assigned > epsilon
+		remainingGrid -= state.minimumKw
+		remainingByCharger[state.chargerID] -= state.minimumKw
+	}
+	return remainingGrid
 }
 
 func distributePower(states []allocationState, remainingGrid float64, remainingByCharger map[string]float64) {
@@ -101,8 +145,10 @@ func assignmentsFromStates(states []allocationState) []Assignment {
 	assignments := make([]Assignment, 0, len(states))
 	for _, state := range states {
 		assignments = append(assignments, Assignment{
-			SessionID:       state.sessionID,
-			AssignedPowerKw: state.assigned,
+			SessionID:         state.sessionID,
+			EffectiveDemandKw: state.demandKw,
+			AssignedPowerKw:   state.assigned,
+			Status:            state.status,
 		})
 	}
 	return assignments
@@ -119,14 +165,6 @@ func connectorLocations(config domain.StationConfig) map[string]connectorLocatio
 		}
 	}
 	return locations
-}
-
-func effectiveDemand(session domain.Session, connectorMax float64) float64 {
-	demand := minimum(session.RequestedPowerKw, session.VehicleMaxPowerKw, connectorMax)
-	if session.ChargingCurveLimitKw != nil {
-		demand = minimum(demand, *session.ChargingCurveLimitKw)
-	}
-	return demand
 }
 
 func countActive(states []allocationState) (int, map[string]int) {

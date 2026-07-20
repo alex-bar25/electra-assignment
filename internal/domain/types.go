@@ -4,9 +4,16 @@ import "time"
 
 type OperationalStatus string
 
+type SessionStatus string
+
+const DefaultMinimumPowerKw = 5.0
+
 const (
 	OperationalStatusAvailable   OperationalStatus = "available"
 	OperationalStatusUnavailable OperationalStatus = "unavailable"
+
+	SessionStatusCharging        SessionStatus = "charging"
+	SessionStatusWaitingForPower SessionStatus = "waiting_for_power"
 )
 
 type StationConfig struct {
@@ -30,12 +37,15 @@ type ConnectorConfig struct {
 }
 
 type Session struct {
-	ID                   string    `json:"id"`
-	ConnectorID          string    `json:"connectorId"`
-	RequestedPowerKw     float64   `json:"requestedPowerKw"`
-	VehicleMaxPowerKw    float64   `json:"vehicleMaxPowerKw"`
-	ChargingCurveLimitKw *float64  `json:"chargingCurveLimitKw,omitempty"`
-	AssignedPowerKw      float64   `json:"assignedPowerKw"`
-	StartedAt            time.Time `json:"startedAt"`
-	UpdatedAt            time.Time `json:"updatedAt"`
+	ID                   string        `json:"id"`
+	ConnectorID          string        `json:"connectorId"`
+	RequestedPowerKw     float64       `json:"requestedPowerKw"`
+	VehicleMaxPowerKw    float64       `json:"vehicleMaxPowerKw"`
+	ChargingCurveLimitKw *float64      `json:"chargingCurveLimitKw,omitempty"`
+	MinimumPowerKw       float64       `json:"minimumPowerKw"`
+	EffectiveDemandKw    float64       `json:"effectiveDemandKw"`
+	AssignedPowerKw      float64       `json:"assignedPowerKw"`
+	Status               SessionStatus `json:"status"`
+	StartedAt            time.Time     `json:"startedAt"`
+	UpdatedAt            time.Time     `json:"updatedAt"`
 }

@@ -41,8 +41,36 @@ func (session Session) Validate() error {
 	if session.ChargingCurveLimitKw != nil && !isPositiveFinite(*session.ChargingCurveLimitKw) {
 		return fmt.Errorf("charging curve limit must be positive when provided")
 	}
+	if session.MinimumPowerKw < 0 || math.IsInf(session.MinimumPowerKw, 0) || math.IsNaN(session.MinimumPowerKw) {
+		return fmt.Errorf("minimum power cannot be negative or non-finite")
+	}
 
 	return nil
+}
+
+func NormalizeMinimumPowerKw(value float64) float64 {
+	if value == 0 {
+		return DefaultMinimumPowerKw
+	}
+	return value
+}
+
+func EffectiveDemandKw(session Session, connectorMaxPowerKw float64) float64 {
+	demand := minimumPower(session.RequestedPowerKw, session.VehicleMaxPowerKw, connectorMaxPowerKw)
+	if session.ChargingCurveLimitKw != nil {
+		demand = minimumPower(demand, *session.ChargingCurveLimitKw)
+	}
+	return demand
+}
+
+func minimumPower(values ...float64) float64 {
+	result := values[0]
+	for _, value := range values[1:] {
+		if value < result {
+			result = value
+		}
+	}
+	return result
 }
 
 func validateCharger(charger ChargerConfig, chargerIDs, connectorIDs map[string]struct{}) error {

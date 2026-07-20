@@ -16,6 +16,7 @@ var (
 	ErrConnectorNotFound    = errors.New("connector not found")
 	ErrConnectorOccupied    = errors.New("connector is occupied")
 	ErrHardwareUnavailable  = errors.New("charger or connector is unavailable")
+	ErrMinimumExceedsDemand = errors.New("minimum power exceeds effective demand")
 )
 
 type StationState struct {
@@ -71,6 +72,11 @@ func (service *Service) StartSession(session domain.Session) (domain.Session, er
 	}
 	if charger.Status != domain.OperationalStatusAvailable || connector.Status != domain.OperationalStatusAvailable {
 		return domain.Session{}, ErrHardwareUnavailable
+	}
+	session.MinimumPowerKw = domain.NormalizeMinimumPowerKw(session.MinimumPowerKw)
+	session.EffectiveDemandKw = domain.EffectiveDemandKw(session, connector.MaxPowerKw)
+	if session.MinimumPowerKw > session.EffectiveDemandKw || session.MinimumPowerKw > charger.MaxPowerKw {
+		return domain.Session{}, ErrMinimumExceedsDemand
 	}
 	for _, active := range service.sessions {
 		if active.ConnectorID == session.ConnectorID {
@@ -134,7 +140,9 @@ func (service *Service) recomputeLocked(now time.Time) {
 	}
 	for _, assignment := range allocation.Allocate(*service.config, sessions) {
 		session := service.sessions[assignment.SessionID]
+		session.EffectiveDemandKw = assignment.EffectiveDemandKw
 		session.AssignedPowerKw = assignment.AssignedPowerKw
+		session.Status = assignment.Status
 		service.sessions[assignment.SessionID] = session
 	}
 	service.lastUpdatedAt = now
