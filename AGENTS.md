@@ -582,6 +582,18 @@ Do not turn the README into a full production design document.
 
 ---
 
+## Real-Time Requirement
+
+Every session start, update, stop, or relevant station-state change must trigger allocation recomputation immediately.
+
+The full event-handling path, including validation, state mutation, allocation recomputation, and response generation, must complete in under 1 second under the assignment’s expected workload.
+
+The implementation should remain simple and in-memory so this requirement is comfortably met without background queues or distributed infrastructure.
+
+Include at least one test or benchmark-style scenario demonstrating that representative events are processed within the required latency.
+
+---
+
 ## AI Agent Rules
 
 When using Codex or another coding agent:
