@@ -52,6 +52,21 @@ func TestServiceSnapshotReturnsCopies(t *testing.T) {
 	}
 }
 
+func TestSessionsForSnapshotUsesStableSummationOrder(t *testing.T) {
+	sessions, gridImport := sessionsForSnapshot(map[string]domain.Session{
+		"session-c": {ID: "session-c", AssignedPowerKw: 1},
+		"session-a": {ID: "session-a", AssignedPowerKw: 1e16},
+		"session-b": {ID: "session-b", AssignedPowerKw: 1},
+	})
+
+	if sessions[0].ID != "session-a" || sessions[1].ID != "session-b" || sessions[2].ID != "session-c" {
+		t.Fatalf("session order = %q, %q, %q", sessions[0].ID, sessions[1].ID, sessions[2].ID)
+	}
+	if gridImport != 1e16 {
+		t.Fatalf("grid import = %v, want stable sorted sum %v", gridImport, 1e16)
+	}
+}
+
 func testStationConfig() domain.StationConfig {
 	return domain.StationConfig{
 		ID:             "station-1",

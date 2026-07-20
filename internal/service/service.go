@@ -97,15 +97,7 @@ func (service *Service) Snapshot() (StationState, error) {
 }
 
 func (service *Service) snapshotLocked() StationState {
-	sessions := make([]domain.Session, 0, len(service.sessions))
-	gridImport := 0.0
-	for _, session := range service.sessions {
-		sessions = append(sessions, cloneSession(session))
-		gridImport += session.AssignedPowerKw
-	}
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].ID < sessions[j].ID
-	})
+	sessions, gridImport := sessionsForSnapshot(service.sessions)
 	available := service.config.GridCapacityKw - gridImport
 	if available < 0 {
 		available = 0
@@ -117,6 +109,22 @@ func (service *Service) snapshotLocked() StationState {
 		AvailableGridPowerKw: available,
 		LastUpdatedAt:        service.lastUpdatedAt,
 	}
+}
+
+func sessionsForSnapshot(stored map[string]domain.Session) ([]domain.Session, float64) {
+	sessions := make([]domain.Session, 0, len(stored))
+	for _, session := range stored {
+		sessions = append(sessions, cloneSession(session))
+	}
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].ID < sessions[j].ID
+	})
+
+	gridImport := 0.0
+	for _, session := range sessions {
+		gridImport += session.AssignedPowerKw
+	}
+	return sessions, gridImport
 }
 
 func (service *Service) recomputeLocked(now time.Time) {
