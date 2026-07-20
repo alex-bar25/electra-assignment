@@ -125,6 +125,116 @@ func TestServiceStartSessionCanWaitForMinimumPower(t *testing.T) {
 	}
 }
 
+func TestServiceUpdateSessionRecomputesBeforeReturning(t *testing.T) {
+	service := configuredService(t, testStationConfig())
+	if _, err := service.StartSession(testSession("session-1", "connector-1", 100)); err != nil {
+		t.Fatalf("first StartSession() error = %v", err)
+	}
+	second, err := service.StartSession(testSession("session-2", "connector-2", 100))
+	if err != nil {
+		t.Fatalf("second StartSession() error = %v", err)
+	}
+
+	requested := 20.0
+	updated, err := service.UpdateSession("session-2", SessionUpdate{RequestedPowerKw: &requested})
+	if err != nil {
+		t.Fatalf("UpdateSession() error = %v", err)
+	}
+	if updated.AssignedPowerKw != 20 || updated.EffectiveDemandKw != 20 || !updated.StartedAt.Equal(second.StartedAt) {
+		t.Fatalf("updated session = %#v, want 20 kW with preserved start time", updated)
+	}
+
+	state, err := service.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	if state.Sessions[0].AssignedPowerKw != 80 || state.Sessions[1].AssignedPowerKw != 20 {
+		t.Fatalf("sessions = %#v, want 80/20 kW", state.Sessions)
+	}
+}
+
+func TestServiceUpdateSessionReconsidersWaitingSessions(t *testing.T) {
+	config := testStationConfig()
+	config.GridCapacityKw = 10
+	service := configuredService(t, config)
+	first := testSession("session-1", "connector-1", 100)
+	first.MinimumPowerKw = 10
+	if _, err := service.StartSession(first); err != nil {
+		t.Fatalf("first StartSession() error = %v", err)
+	}
+	if _, err := service.StartSession(testSession("session-2", "connector-2", 100)); err != nil {
+		t.Fatalf("second StartSession() error = %v", err)
+	}
+
+	five := 5.0
+	if _, err := service.UpdateSession("session-1", SessionUpdate{
+		RequestedPowerKw:  &five,
+		VehicleMaxPowerKw: &five,
+		MinimumPowerKw:    &five,
+	}); err != nil {
+		t.Fatalf("UpdateSession() error = %v", err)
+	}
+	state, err := service.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	for _, session := range state.Sessions {
+		if session.AssignedPowerKw != 5 || session.Status != domain.SessionStatusCharging {
+			t.Fatalf("session = %#v, want charging at 5 kW", session)
+		}
+	}
+}
+
+func TestServiceUpdateSessionRejectsInvalidOperationsAtomically(t *testing.T) {
+	service := configuredService(t, testStationConfig())
+	if _, err := service.StartSession(testSession("session-1", "connector-1", 100)); err != nil {
+		t.Fatalf("StartSession() error = %v", err)
+	}
+
+	four := 4.0
+	if _, err := service.UpdateSession("session-1", SessionUpdate{RequestedPowerKw: &four}); !errors.Is(err, ErrMinimumExceedsDemand) {
+		t.Fatalf("invalid update error = %v, want ErrMinimumExceedsDemand", err)
+	}
+	state, err := service.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	if state.Sessions[0].RequestedPowerKw != 100 || state.Sessions[0].AssignedPowerKw != 100 {
+		t.Fatalf("session changed after invalid update: %#v", state.Sessions[0])
+	}
+	if _, err := service.UpdateSession("missing", SessionUpdate{}); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("unknown update error = %v, want ErrSessionNotFound", err)
+	}
+}
+
+func TestServiceStopSessionRecomputesBeforeReturning(t *testing.T) {
+	config := testStationConfig()
+	config.GridCapacityKw = 5
+	service := configuredService(t, config)
+	if _, err := service.StartSession(testSession("session-1", "connector-1", 100)); err != nil {
+		t.Fatalf("first StartSession() error = %v", err)
+	}
+	if _, err := service.StartSession(testSession("session-2", "connector-2", 100)); err != nil {
+		t.Fatalf("second StartSession() error = %v", err)
+	}
+
+	state, err := service.StopSession("session-1")
+	if err != nil {
+		t.Fatalf("StopSession() error = %v", err)
+	}
+	if len(state.Sessions) != 1 || state.Sessions[0].ID != "session-2" ||
+		state.Sessions[0].AssignedPowerKw != 5 || state.Sessions[0].Status != domain.SessionStatusCharging {
+		t.Fatalf("state = %#v, want session-2 charging at 5 kW", state)
+	}
+}
+
+func TestServiceStopSessionRejectsUnknownSession(t *testing.T) {
+	service := configuredService(t, testStationConfig())
+	if _, err := service.StopSession("missing"); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("StopSession() error = %v, want ErrSessionNotFound", err)
+	}
+}
+
 func TestServiceStartSessionRejectsInvalidOperations(t *testing.T) {
 	t.Run("station not configured", func(t *testing.T) {
 		_, err := New().StartSession(testSession("session-1", "connector-1", 100))
