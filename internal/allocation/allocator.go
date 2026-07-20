@@ -27,6 +27,12 @@ type allocationState struct {
 }
 
 func Allocate(config domain.StationConfig, sessions []domain.Session) []Assignment {
+	states, remainingByCharger := prepareAllocation(config, sessions)
+	distributePower(states, config.GridCapacityKw, remainingByCharger)
+	return assignmentsFromStates(states)
+}
+
+func prepareAllocation(config domain.StationConfig, sessions []domain.Session) ([]allocationState, map[string]float64) {
 	locations := connectorLocations(config)
 	states := make([]allocationState, 0, len(sessions))
 	remainingByCharger := make(map[string]float64, len(config.Chargers))
@@ -47,8 +53,10 @@ func Allocate(config domain.StationConfig, sessions []domain.Session) []Assignme
 	sort.Slice(states, func(i, j int) bool {
 		return states[i].sessionID < states[j].sessionID
 	})
+	return states, remainingByCharger
+}
 
-	remainingGrid := config.GridCapacityKw
+func distributePower(states []allocationState, remainingGrid float64, remainingByCharger map[string]float64) {
 	// Raise every active session by the same step. A session leaves the active
 	// set when its own demand or its charger's shared capacity is exhausted.
 	for {
@@ -87,7 +95,9 @@ func Allocate(config domain.StationConfig, sessions []domain.Session) []Assignme
 			}
 		}
 	}
+}
 
+func assignmentsFromStates(states []allocationState) []Assignment {
 	assignments := make([]Assignment, 0, len(states))
 	for _, state := range states {
 		assignments = append(assignments, Assignment{
