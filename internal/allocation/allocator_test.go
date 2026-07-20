@@ -146,7 +146,7 @@ func TestAllocateUsesSessionIDToBreakAdmissionTies(t *testing.T) {
 	assertAssignment(t, assignments, "session-b", 0, domain.SessionStatusWaitingForPower)
 }
 
-func TestAllocateSharesSurplusAfterMinimums(t *testing.T) {
+func TestAllocateKeepsFinalAllocationsFairAfterMinimums(t *testing.T) {
 	config := stationWithOneCharger(30, 100, 100, 100)
 	first := testSession("session-1", "connector-1", 100)
 	first.MinimumPowerKw = 10
@@ -154,8 +154,8 @@ func TestAllocateSharesSurplusAfterMinimums(t *testing.T) {
 	second.MinimumPowerKw = 5
 
 	assignments := Allocate(config, []domain.Session{first, second})
-	assertAssignment(t, assignments, "session-1", 17.5, domain.SessionStatusCharging)
-	assertAssignment(t, assignments, "session-2", 12.5, domain.SessionStatusCharging)
+	assertAssignment(t, assignments, "session-1", 15, domain.SessionStatusCharging)
+	assertAssignment(t, assignments, "session-2", 15, domain.SessionStatusCharging)
 }
 
 func stationWithOneCharger(grid, charger float64, connectors ...float64) domain.StationConfig {

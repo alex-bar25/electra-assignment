@@ -20,11 +20,11 @@ func TestServiceConfigureAndSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
-	if state.Config.ID != "station-1" || len(state.Sessions) != 0 {
+	if state.StationID != "station-1" || state.GridCapacityKw != 100 || len(state.Sessions) != 0 {
 		t.Fatalf("Snapshot() = %#v, want configured station without sessions", state)
 	}
-	if state.GridImportKw != 0 || state.AvailableGridPowerKw != 100 {
-		t.Fatalf("power summary = (%v, %v), want (0, 100)", state.GridImportKw, state.AvailableGridPowerKw)
+	if state.GridImportKw != 0 || state.AvailableGridPowerKw != 100 || state.AvailableStationPowerKw != 100 {
+		t.Fatalf("power summary = (%v, %v, %v), want (0, 100, 100)", state.GridImportKw, state.AvailableGridPowerKw, state.AvailableStationPowerKw)
 	}
 	if state.LastUpdatedAt.IsZero() {
 		t.Fatal("LastUpdatedAt is zero")
@@ -41,14 +41,40 @@ func TestServiceSnapshotReturnsCopies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
-	first.Config.Chargers[0].Connectors[0].ID = "changed"
+	first.Chargers[0].Connectors[0].ID = "changed"
 
 	second, err := service.Snapshot()
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
-	if second.Config.Chargers[0].Connectors[0].ID != "connector-1" {
-		t.Fatalf("stored connector ID = %q, want connector-1", second.Config.Chargers[0].Connectors[0].ID)
+	if second.Chargers[0].Connectors[0].ID != "connector-1" {
+		t.Fatalf("stored connector ID = %q, want connector-1", second.Chargers[0].Connectors[0].ID)
+	}
+}
+
+func TestServiceSnapshotIncludesHardwarePowerState(t *testing.T) {
+	service := configuredService(t, testStationConfig())
+	if _, err := service.StartSession(testSession("session-1", "connector-1", 100)); err != nil {
+		t.Fatalf("first StartSession() error = %v", err)
+	}
+	if _, err := service.StartSession(testSession("session-2", "connector-2", 100)); err != nil {
+		t.Fatalf("second StartSession() error = %v", err)
+	}
+
+	state, err := service.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	charger := state.Chargers[0]
+	if charger.CurrentPowerKw != 100 || len(charger.Connectors) != 2 {
+		t.Fatalf("charger = %#v, want 100 kW across two connectors", charger)
+	}
+	wantSessionIDs := []string{"session-1", "session-2"}
+	for index, connector := range charger.Connectors {
+		wantSessionID := wantSessionIDs[index]
+		if !connector.Occupied || connector.ActiveSessionID != wantSessionID || connector.AssignedPowerKw != 50 {
+			t.Fatalf("connector = %#v, want %s at 50 kW", connector, wantSessionID)
+		}
 	}
 }
 

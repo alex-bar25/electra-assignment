@@ -33,7 +33,7 @@ The allocator receives an immutable view of configuration and active sessions an
 
 Eligible sessions are considered for admission by start time and then session ID. Admission reserves each session's minimum against remaining station and charger capacity. A session that cannot reserve its minimum remains active with `waiting_for_power` status and receives `0 kW`.
 
-Admitted sessions begin at their reserved minimum. Allocation then uses deterministic progressive filling for surplus power: raise all unconstrained admitted sessions equally until station capacity, a session effective-demand cap, or a shared charger cap is reached. Freeze constrained sessions and continue redistributing remaining capacity. This keeps admission deterministic and shares surplus fairly while respecting station, charger, connector, vehicle, request, and charging-curve limits.
+Admitted sessions begin at their reserved minimum. Allocation then uses deterministic progressive filling for surplus power: raise the sessions with the lowest current allocation until they reach the next allocation level, station capacity, a session effective-demand cap, or a shared charger cap. Freeze constrained sessions and continue redistributing remaining capacity. This keeps final allocations max-min fair even when sessions declare different minimums.
 
 Unavailable hardware and waiting sessions receive zero allocation. Output ordering is stable and no decision relies on Go map iteration order. Floating-point comparisons use one small package-level epsilon.
 
@@ -42,6 +42,8 @@ Unavailable hardware and waiting sessions receive zero allocation. Output orderi
 The service owns the single configured station and active sessions behind one mutex. A configuration or session mutation validates, applies the change, recomputes all assignments synchronously, stores the result, and only then releases the lock. Reads return copies so callers cannot mutate shared state.
 
 This coarse lock keeps each mutation and recomputation atomic. It is appropriate for one small in-memory station and makes partially updated state impossible to observe.
+
+Station snapshots derive an OPS-oriented read model from configuration and active sessions. It includes station capacity, current import and headroom, per-charger current power, and per-connector availability, occupancy, active session, and assigned power. The read model is rebuilt for each snapshot rather than stored as a second mutable representation.
 
 ## HTTP API and errors
 

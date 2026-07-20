@@ -1,6 +1,7 @@
 package allocation
 
 import (
+	"math"
 	"sort"
 	"time"
 
@@ -101,17 +102,20 @@ func admitSessions(states []allocationState, remainingGrid float64, remainingByC
 }
 
 func distributePower(states []allocationState, remainingGrid float64, remainingByCharger map[string]float64) {
-	// Raise every active session by the same step. A session leaves the active
-	// set when its own demand or its charger's shared capacity is exhausted.
+	// Raise the lowest assigned sessions until they catch the next level or
+	// reach a physical limit. This preserves max-min fairness after minimums.
 	for {
-		activeCount, activeByCharger := countActive(states)
+		lowestAssigned, activeCount, activeByCharger, nextAssigned := lowestActiveGroup(states)
 		if activeCount == 0 || remainingGrid <= epsilon {
 			break
 		}
 
 		step := remainingGrid / float64(activeCount)
+		if !math.IsInf(nextAssigned, 1) {
+			step = minimum(step, nextAssigned-lowestAssigned)
+		}
 		for _, state := range states {
-			if !state.active {
+			if !state.active || state.assigned > lowestAssigned+epsilon {
 				continue
 			}
 			chargerShare := remainingByCharger[state.chargerID] / float64(activeByCharger[state.chargerID])
@@ -122,7 +126,7 @@ func distributePower(states []allocationState, remainingGrid float64, remainingB
 		}
 
 		for index := range states {
-			if !states[index].active {
+			if !states[index].active || states[index].assigned > lowestAssigned+epsilon {
 				continue
 			}
 			states[index].assigned += step
@@ -167,16 +171,29 @@ func connectorLocations(config domain.StationConfig) map[string]connectorLocatio
 	return locations
 }
 
-func countActive(states []allocationState) (int, map[string]int) {
-	activeByCharger := make(map[string]int)
-	activeCount := 0
+func lowestActiveGroup(states []allocationState) (float64, int, map[string]int, float64) {
+	lowestAssigned := math.Inf(1)
 	for _, state := range states {
-		if state.active {
-			activeCount++
-			activeByCharger[state.chargerID]++
+		if state.active && state.assigned < lowestAssigned {
+			lowestAssigned = state.assigned
 		}
 	}
-	return activeCount, activeByCharger
+
+	activeByCharger := make(map[string]int)
+	activeCount := 0
+	nextAssigned := math.Inf(1)
+	for _, state := range states {
+		if !state.active {
+			continue
+		}
+		if state.assigned <= lowestAssigned+epsilon {
+			activeCount++
+			activeByCharger[state.chargerID]++
+		} else if state.assigned < nextAssigned {
+			nextAssigned = state.assigned
+		}
+	}
+	return lowestAssigned, activeCount, activeByCharger, nextAssigned
 }
 
 func minimum(values ...float64) float64 {
