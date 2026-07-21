@@ -73,6 +73,20 @@ func TestAllocateSharesAndRedistributesGridPower(t *testing.T) {
 	})
 }
 
+func TestAllocateRedistributesAcrossThreeDemandLevels(t *testing.T) {
+	config := stationWithOneCharger(300, 400, 400, 400, 400)
+	sessions := []domain.Session{
+		testSession("session-1", "connector-1", 50),
+		testSession("session-2", "connector-2", 120),
+		testSession("session-3", "connector-3", 300),
+	}
+
+	assignments := Allocate(config, sessions)
+	assertPower(t, assignments, "session-1", 50)
+	assertPower(t, assignments, "session-2", 120)
+	assertPower(t, assignments, "session-3", 130)
+}
+
 func TestAllocateRespectsSharedChargerLimit(t *testing.T) {
 	config := domain.StationConfig{ID: "station-1", GridCapacityKw: 200, Chargers: []domain.ChargerConfig{
 		{ID: "charger-1", MaxPowerKw: 100, Status: domain.OperationalStatusAvailable, Connectors: []domain.ConnectorConfig{
