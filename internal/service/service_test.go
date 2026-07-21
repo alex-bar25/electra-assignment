@@ -195,51 +195,71 @@ func TestServiceUpdateSessionRecomputesBeforeReturning(t *testing.T) {
 }
 
 func TestServiceChargingCurveUpdateRecomputesBeforeReturning(t *testing.T) {
-	service := configuredService(t, testStationConfig())
-	if _, err := service.StartSession(testSession("session-1", "connector-1", 100)); err != nil {
+	config := testStationConfig()
+	config.GridCapacityKw = 300
+	config.Chargers[0].MaxPowerKw = 300
+	config.Chargers[0].Connectors[0].MaxPowerKw = 300
+	config.Chargers[0].Connectors[1].MaxPowerKw = 300
+	service := configuredService(t, config)
+	if _, err := service.StartSession(testSession("session-1", "connector-1", 250)); err != nil {
 		t.Fatalf("first StartSession() error = %v", err)
 	}
-	if _, err := service.StartSession(testSession("session-2", "connector-2", 100)); err != nil {
+	if _, err := service.StartSession(testSession("session-2", "connector-2", 250)); err != nil {
 		t.Fatalf("second StartSession() error = %v", err)
 	}
 
-	curveLimit := 20.0
-	updated, err := service.UpdateSession("session-2", SessionUpdate{ChargingCurveLimitKw: &curveLimit})
+	curveLimit := 80.0
+	updated, err := service.UpdateSession("session-1", SessionUpdate{ChargingCurveLimitKw: &curveLimit})
 	if err != nil {
 		t.Fatalf("UpdateSession() error = %v", err)
 	}
-	if updated.RequestedPowerKw != 100 || updated.ChargingCurveLimitKw == nil ||
-		*updated.ChargingCurveLimitKw != 20 || updated.EffectiveDemandKw != 20 || updated.AssignedPowerKw != 20 {
-		t.Fatalf("updated session = %#v, want curve-limited allocation of 20 kW", updated)
+	if updated.RequestedPowerKw != 250 || updated.ChargingCurveLimitKw == nil ||
+		*updated.ChargingCurveLimitKw != 80 || updated.EffectiveDemandKw != 80 || updated.AssignedPowerKw != 80 {
+		t.Fatalf("updated session = %#v, want curve-limited allocation of 80 kW", updated)
 	}
 
 	state, err := service.Snapshot()
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
-	if state.Sessions[0].AssignedPowerKw != 80 || state.Sessions[1].AssignedPowerKw != 20 {
-		t.Fatalf("sessions = %#v, want 80/20 kW", state.Sessions)
+	if state.Sessions[0].AssignedPowerKw != 80 || state.Sessions[1].AssignedPowerKw != 220 {
+		t.Fatalf("sessions = %#v, want 80/220 kW", state.Sessions)
 	}
 }
 
 func TestServiceUpdateSessionReconsidersWaitingSessions(t *testing.T) {
 	config := testStationConfig()
-	config.GridCapacityKw = 10
+	config.GridCapacityKw = 100
+	config.Chargers[0].MaxPowerKw = 300
+	config.Chargers[0].Connectors = append(config.Chargers[0].Connectors, domain.ConnectorConfig{
+		ID: "connector-3", Type: "CCS", MaxPowerKw: 200, Status: domain.OperationalStatusAvailable,
+	})
 	service := configuredService(t, config)
 	first := testSession("session-1", "connector-1", 100)
-	first.MinimumPowerKw = 10
+	first.MinimumPowerKw = 40
 	if _, err := service.StartSession(first); err != nil {
 		t.Fatalf("first StartSession() error = %v", err)
 	}
-	if _, err := service.StartSession(testSession("session-2", "connector-2", 100)); err != nil {
+	second := testSession("session-2", "connector-2", 100)
+	second.MinimumPowerKw = 40
+	if _, err := service.StartSession(second); err != nil {
 		t.Fatalf("second StartSession() error = %v", err)
 	}
+	third := testSession("session-3", "connector-3", 100)
+	third.MinimumPowerKw = 40
+	waiting, err := service.StartSession(third)
+	if err != nil {
+		t.Fatalf("third StartSession() error = %v", err)
+	}
+	if waiting.AssignedPowerKw != 0 || waiting.Status != domain.SessionStatusWaitingForPower {
+		t.Fatalf("third session = %#v, want waiting at 0 kW", waiting)
+	}
 
-	five := 5.0
+	twenty := 20.0
 	if _, err := service.UpdateSession("session-1", SessionUpdate{
-		RequestedPowerKw:  &five,
-		VehicleMaxPowerKw: &five,
-		MinimumPowerKw:    &five,
+		RequestedPowerKw:  &twenty,
+		VehicleMaxPowerKw: &twenty,
+		MinimumPowerKw:    &twenty,
 	}); err != nil {
 		t.Fatalf("UpdateSession() error = %v", err)
 	}
@@ -247,9 +267,10 @@ func TestServiceUpdateSessionReconsidersWaitingSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
+	wantPowerBySession := map[string]float64{"session-1": 20, "session-2": 40, "session-3": 40}
 	for _, session := range state.Sessions {
-		if session.AssignedPowerKw != 5 || session.Status != domain.SessionStatusCharging {
-			t.Fatalf("session = %#v, want charging at 5 kW", session)
+		if session.AssignedPowerKw != wantPowerBySession[session.ID] || session.Status != domain.SessionStatusCharging {
+			t.Fatalf("session = %#v, want resumed charging allocation", session)
 		}
 	}
 }
@@ -278,12 +299,15 @@ func TestServiceUpdateSessionRejectsInvalidOperationsAtomically(t *testing.T) {
 
 func TestServiceStopSessionRecomputesBeforeReturning(t *testing.T) {
 	config := testStationConfig()
-	config.GridCapacityKw = 5
+	config.GridCapacityKw = 300
+	config.Chargers[0].MaxPowerKw = 300
+	config.Chargers[0].Connectors[0].MaxPowerKw = 300
+	config.Chargers[0].Connectors[1].MaxPowerKw = 300
 	service := configuredService(t, config)
-	if _, err := service.StartSession(testSession("session-1", "connector-1", 100)); err != nil {
+	if _, err := service.StartSession(testSession("session-1", "connector-1", 250)); err != nil {
 		t.Fatalf("first StartSession() error = %v", err)
 	}
-	if _, err := service.StartSession(testSession("session-2", "connector-2", 100)); err != nil {
+	if _, err := service.StartSession(testSession("session-2", "connector-2", 250)); err != nil {
 		t.Fatalf("second StartSession() error = %v", err)
 	}
 
@@ -292,8 +316,8 @@ func TestServiceStopSessionRecomputesBeforeReturning(t *testing.T) {
 		t.Fatalf("StopSession() error = %v", err)
 	}
 	if len(state.Sessions) != 1 || state.Sessions[0].ID != "session-2" ||
-		state.Sessions[0].AssignedPowerKw != 5 || state.Sessions[0].Status != domain.SessionStatusCharging {
-		t.Fatalf("state = %#v, want session-2 charging at 5 kW", state)
+		state.Sessions[0].AssignedPowerKw != 250 || state.Sessions[0].Status != domain.SessionStatusCharging {
+		t.Fatalf("state = %#v, want session-2 charging at 250 kW", state)
 	}
 }
 

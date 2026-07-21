@@ -12,7 +12,7 @@ import (
 const testEpsilon = 1e-6
 
 func TestAllocateRespectsEffectiveDemandLimits(t *testing.T) {
-	curveLimit := 60.0
+	curveLimit := 180.0
 	tests := []struct {
 		name      string
 		grid      float64
@@ -25,10 +25,10 @@ func TestAllocateRespectsEffectiveDemandLimits(t *testing.T) {
 	}{
 		{name: "request", grid: 400, charger: 300, connector: 200, requested: 50, vehicle: 180, wantPower: 50},
 		{name: "vehicle", grid: 400, charger: 300, connector: 200, requested: 180, vehicle: 70, wantPower: 70},
-		{name: "charging curve", grid: 400, charger: 300, connector: 200, requested: 180, vehicle: 170, curve: &curveLimit, wantPower: 60},
+		{name: "charging curve", grid: 400, charger: 300, connector: 250, requested: 220, vehicle: 200, curve: &curveLimit, wantPower: 180},
 		{name: "connector", grid: 400, charger: 300, connector: 40, requested: 180, vehicle: 170, wantPower: 40},
 		{name: "charger", grid: 400, charger: 30, connector: 200, requested: 180, vehicle: 170, wantPower: 30},
-		{name: "grid", grid: 20, charger: 300, connector: 200, requested: 180, vehicle: 170, wantPower: 20},
+		{name: "grid", grid: 150, charger: 300, connector: 300, requested: 250, vehicle: 250, wantPower: 150},
 	}
 
 	for _, test := range tests {
@@ -58,27 +58,27 @@ func TestAllocateUsesExplicitStationSupply(t *testing.T) {
 
 func TestAllocateSharesAndRedistributesGridPower(t *testing.T) {
 	t.Run("equal demand receives equal power", func(t *testing.T) {
-		config := stationWithOneCharger(100, 200, 200, 200)
+		config := stationWithOneCharger(300, 600, 300, 300)
 		sessions := []domain.Session{
-			testSession("session-1", "connector-1", 100),
-			testSession("session-2", "connector-2", 100),
+			testSession("session-1", "connector-1", 250),
+			testSession("session-2", "connector-2", 250),
+		}
+
+		assignments := Allocate(config, sessions, config.GridCapacityKw)
+		assertPower(t, assignments, "session-1", 150)
+		assertPower(t, assignments, "session-2", 150)
+	})
+
+	t.Run("unused low demand share is redistributed", func(t *testing.T) {
+		config := stationWithOneCharger(300, 600, 300, 300)
+		sessions := []domain.Session{
+			testSession("session-1", "connector-1", 50),
+			testSession("session-2", "connector-2", 300),
 		}
 
 		assignments := Allocate(config, sessions, config.GridCapacityKw)
 		assertPower(t, assignments, "session-1", 50)
-		assertPower(t, assignments, "session-2", 50)
-	})
-
-	t.Run("unused low demand share is redistributed", func(t *testing.T) {
-		config := stationWithOneCharger(100, 200, 200, 200)
-		sessions := []domain.Session{
-			testSession("session-1", "connector-1", 20),
-			testSession("session-2", "connector-2", 100),
-		}
-
-		assignments := Allocate(config, sessions, config.GridCapacityKw)
-		assertPower(t, assignments, "session-1", 20)
-		assertPower(t, assignments, "session-2", 80)
+		assertPower(t, assignments, "session-2", 250)
 	})
 }
 
@@ -97,44 +97,34 @@ func TestAllocateRedistributesAcrossThreeDemandLevels(t *testing.T) {
 }
 
 func TestAllocateRespectsSharedChargerLimit(t *testing.T) {
-	config := domain.StationConfig{ID: "station-1", GridCapacityKw: 200, Chargers: []domain.ChargerConfig{
-		{ID: "charger-1", MaxPowerKw: 100, Status: domain.OperationalStatusAvailable, Connectors: []domain.ConnectorConfig{
-			{ID: "connector-1", Type: "CCS", MaxPowerKw: 200, Status: domain.OperationalStatusAvailable},
-			{ID: "connector-2", Type: "CCS", MaxPowerKw: 200, Status: domain.OperationalStatusAvailable},
-		}},
-		{ID: "charger-2", MaxPowerKw: 200, Status: domain.OperationalStatusAvailable, Connectors: []domain.ConnectorConfig{
-			{ID: "connector-3", Type: "CCS", MaxPowerKw: 200, Status: domain.OperationalStatusAvailable},
-		}},
-	}}
+	config := stationWithOneCharger(500, 300, 300, 300)
 	sessions := []domain.Session{
-		testSession("session-1", "connector-1", 200),
-		testSession("session-2", "connector-2", 200),
-		testSession("session-3", "connector-3", 200),
+		testSession("session-1", "connector-1", 250),
+		testSession("session-2", "connector-2", 250),
 	}
 
 	assignments := Allocate(config, sessions, config.GridCapacityKw)
-	assertPower(t, assignments, "session-1", 50)
-	assertPower(t, assignments, "session-2", 50)
-	assertPower(t, assignments, "session-3", 100)
+	assertPower(t, assignments, "session-1", 150)
+	assertPower(t, assignments, "session-2", 150)
 }
 
 func TestAllocateRedistributesPastFullCharger(t *testing.T) {
-	config := domain.StationConfig{ID: "station-1", GridCapacityKw: 100, Chargers: []domain.ChargerConfig{
-		{ID: "charger-1", MaxPowerKw: 5, Status: domain.OperationalStatusAvailable, Connectors: []domain.ConnectorConfig{
-			{ID: "connector-1", Type: "CCS", MaxPowerKw: 100, Status: domain.OperationalStatusAvailable},
+	config := domain.StationConfig{ID: "station-1", GridCapacityKw: 400, Chargers: []domain.ChargerConfig{
+		{ID: "charger-1", MaxPowerKw: 100, Status: domain.OperationalStatusAvailable, Connectors: []domain.ConnectorConfig{
+			{ID: "connector-1", Type: "CCS", MaxPowerKw: 300, Status: domain.OperationalStatusAvailable},
 		}},
-		{ID: "charger-2", MaxPowerKw: 95, Status: domain.OperationalStatusAvailable, Connectors: []domain.ConnectorConfig{
-			{ID: "connector-2", Type: "CCS", MaxPowerKw: 100, Status: domain.OperationalStatusAvailable},
+		{ID: "charger-2", MaxPowerKw: 300, Status: domain.OperationalStatusAvailable, Connectors: []domain.ConnectorConfig{
+			{ID: "connector-2", Type: "CCS", MaxPowerKw: 300, Status: domain.OperationalStatusAvailable},
 		}},
 	}}
 	sessions := []domain.Session{
-		testSession("session-1", "connector-1", 100),
-		testSession("session-2", "connector-2", 100),
+		testSession("session-1", "connector-1", 300),
+		testSession("session-2", "connector-2", 300),
 	}
 
 	assignments := Allocate(config, sessions, config.GridCapacityKw)
-	assertPower(t, assignments, "session-1", 5)
-	assertPower(t, assignments, "session-2", 95)
+	assertPower(t, assignments, "session-1", 100)
+	assertPower(t, assignments, "session-2", 300)
 }
 
 func TestAllocateReturnsZeroForUnavailableHardware(t *testing.T) {
@@ -166,16 +156,22 @@ func TestAllocateProducesStableOutput(t *testing.T) {
 }
 
 func TestAllocateWaitsWhenMinimumCannotBeReserved(t *testing.T) {
-	config := stationWithOneCharger(5, 100, 100, 100)
+	config := stationWithOneCharger(100, 300, 100, 100, 100)
 	start := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 	first := testSession("session-1", "connector-1", 100)
+	first.MinimumPowerKw = 40
 	first.StartedAt = start
 	second := testSession("session-2", "connector-2", 100)
+	second.MinimumPowerKw = 40
 	second.StartedAt = start.Add(time.Second)
+	third := testSession("session-3", "connector-3", 100)
+	third.MinimumPowerKw = 40
+	third.StartedAt = start.Add(2 * time.Second)
 
-	assignments := Allocate(config, []domain.Session{second, first}, config.GridCapacityKw)
-	assertAssignment(t, assignments, "session-1", 5, domain.SessionStatusCharging)
-	assertAssignment(t, assignments, "session-2", 0, domain.SessionStatusWaitingForPower)
+	assignments := Allocate(config, []domain.Session{third, second, first}, config.GridCapacityKw)
+	assertAssignment(t, assignments, "session-1", 50, domain.SessionStatusCharging)
+	assertAssignment(t, assignments, "session-2", 50, domain.SessionStatusCharging)
+	assertAssignment(t, assignments, "session-3", 0, domain.SessionStatusWaitingForPower)
 }
 
 func TestAllocateUsesSessionIDToBreakAdmissionTies(t *testing.T) {

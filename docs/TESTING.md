@@ -4,7 +4,7 @@ The test strategy prioritizes the load-management behavior that the assignment e
 
 Each scenario below states why it was selected and the behavior it validates.
 
-The numeric setups are representative examples. A mapped Go test may use scaled values while asserting the same constraint, redistribution rule, state transition, or safety invariant; the coverage map identifies behavioral coverage rather than claiming every prose value is duplicated verbatim in one fixture.
+Direct numeric scenarios use the same values in their primary Go fixtures. Compound scenarios such as invalid operations, hardware availability, and BESS behavior intentionally map to several focused tests because no single test should prove unrelated branches.
 
 ## Test layers
 
@@ -319,7 +319,8 @@ These scenarios cover the minimum-power behavior implemented after the core grid
 
 Only two sessions can be admitted while maintaining their minimum useful allocation.
 
-The remaining session stays active but receives `0 kW` and enters `waiting_for_power`.
+- The first two admitted sessions receive `50 kW` each.
+- The remaining session stays active at `0 kW` with `waiting_for_power`.
 
 The admission order should follow the documented deterministic policy.
 
@@ -337,11 +338,11 @@ This validates the minimum-threshold policy chosen for this submission.
 
 Continue from the previous minimum-power scenario.
 
-Stop one admitted session or reduce its requested power.
+Reduce the first admitted session's requested, vehicle-maximum, and minimum power to `20 kW`.
 
 **Expected result**
 
-The waiting session is immediately reconsidered and begins charging when enough capacity becomes available.
+The updated session receives `20 kW`, the second session keeps its `40 kW` minimum, and the waiting session is immediately reconsidered and begins charging at `40 kW`.
 
 **Why this scenario matters**
 
@@ -355,28 +356,23 @@ This validates that admission is not a one-time decision and that waiting sessio
 
 **Setup**
 
-- Grid capacity: `200 kW`
-- EV demand: `300 kW`
-- BESS maximum discharge power: `150 kW`
+- Grid capacity: `400 kW`
+- Two EV sessions request `300 kW` each on separate capable chargers
+- BESS energy capacity: `200 kWh`
+- BESS maximum charge and discharge power: `200 kW`
 - BESS minimum SoC: `10%`
-- BESS current SoC is above the minimum
+- BESS current SoC: `50%`
 
-First observe the BESS with spare grid capacity, then add EV demand above the grid limit and advance the simulation clock explicitly.
+First observe the BESS with zero and then one EV session. Start the second session and advance the simulation twice by `15 minutes`.
 
 **Expected result**
 
-- The BESS contributes up to `100 kW`
-- EV allocation reaches `300 kW`
-- Grid import remains at or below `200 kW`
-- BESS discharge does not exceed its configured maximum
-- The BESS charges only from grid power left after EV allocations
-- Increasing EV demand reduces or stops BESS charging before any EV allocation is reduced
-- A simulation tick changes SoC by `power × elapsed time`, converted against battery capacity
-- BESS does not discharge below the minimum SoC
-
-Repeat the scenario when the BESS is already at its minimum SoC.
-
-In that case, the BESS must not discharge and EV allocation remains constrained by grid capacity.
+- With no sessions, the BESS charges at `200 kW` and grid import is `200 kW`.
+- With one `300 kW` session, EV demand is served first and BESS charging falls to `100 kW`.
+- With both sessions, each receives `300 kW`, grid import remains `400 kW`, and the BESS discharges at `200 kW`.
+- The first tick changes SoC from `50%` to `25%` using `power × elapsed time`.
+- The second tick reaches the `10%` floor, stops discharge, and immediately reallocates EV power to `200/200 kW`.
+- BESS charge, discharge, and SoC remain within their configured limits throughout.
 
 **Why this scenario matters**
 
