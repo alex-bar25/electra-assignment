@@ -12,7 +12,7 @@ import (
 )
 
 func BenchmarkSessionLifecycle(b *testing.B) {
-	configBody, err := json.Marshal(testStationConfig())
+	configBody, err := json.Marshal(testBESSStationConfig())
 	if err != nil {
 		b.Fatalf("marshal station config: %v", err)
 	}
@@ -25,6 +25,7 @@ func BenchmarkSessionLifecycle(b *testing.B) {
 	}{
 		{method: http.MethodGet, path: "/health", wantStatus: http.StatusOK},
 		{method: http.MethodPut, path: "/api/v1/station/config", body: configBody, wantStatus: http.StatusOK},
+		{method: http.MethodPost, path: "/api/v1/simulation/tick", body: []byte(`{"elapsedSeconds":60}`), wantStatus: http.StatusOK},
 		{method: http.MethodGet, path: "/api/v1/station", wantStatus: http.StatusOK},
 		{method: http.MethodPost, path: "/api/v1/sessions", body: []byte(`{"id":"session-1","connectorId":"connector-1","requestedPowerKw":100,"vehicleMaxPowerKw":100}`), wantStatus: http.StatusCreated},
 		{method: http.MethodPost, path: "/api/v1/sessions", body: []byte(`{"id":"session-2","connectorId":"connector-2","requestedPowerKw":100,"vehicleMaxPowerKw":100}`), wantStatus: http.StatusCreated},

@@ -23,6 +23,7 @@ func New(station *service.Service, logger *slog.Logger) http.Handler {
 	mux.HandleFunc("DELETE /api/v1/sessions/{sessionId}", api.stopSession)
 	mux.HandleFunc("PATCH /api/v1/chargers/{chargerId}", api.updateChargerAvailability)
 	mux.HandleFunc("PATCH /api/v1/connectors/{connectorId}", api.updateConnectorAvailability)
+	mux.HandleFunc("POST /api/v1/simulation/tick", api.advanceSimulation)
 	mux.HandleFunc("/health", api.methodNotAllowed(http.MethodGet))
 	mux.HandleFunc("/api/v1/station/config", api.methodNotAllowed(http.MethodPut))
 	mux.HandleFunc("/api/v1/station", api.methodNotAllowed(http.MethodGet))
@@ -30,6 +31,7 @@ func New(station *service.Service, logger *slog.Logger) http.Handler {
 	mux.HandleFunc("/api/v1/sessions/{sessionId}", api.methodNotAllowed("PATCH, DELETE"))
 	mux.HandleFunc("/api/v1/chargers/{chargerId}", api.methodNotAllowed(http.MethodPatch))
 	mux.HandleFunc("/api/v1/connectors/{connectorId}", api.methodNotAllowed(http.MethodPatch))
+	mux.HandleFunc("/api/v1/simulation/tick", api.methodNotAllowed(http.MethodPost))
 	mux.HandleFunc("/", api.notFound)
 	return mux
 }
