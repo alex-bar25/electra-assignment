@@ -52,6 +52,21 @@ func TestServiceSnapshotReturnsCopies(t *testing.T) {
 	}
 }
 
+func TestCloneConfigCopiesBESS(t *testing.T) {
+	config := testStationConfig()
+	config.BESS = &domain.BESSConfig{
+		EnergyCapacityKwh: 200, SocPercent: 50,
+		MaxChargePowerKw: 200, MaxDischargePowerKw: 200, MinSocPercent: 10,
+	}
+
+	cloned := cloneConfig(config)
+	cloned.BESS.SocPercent = 80
+
+	if config.BESS.SocPercent != 50 {
+		t.Fatalf("original BESS SoC = %v, want 50", config.BESS.SocPercent)
+	}
+}
+
 func TestServiceSnapshotIncludesHardwarePowerState(t *testing.T) {
 	service := configuredService(t, testStationConfig())
 	if _, err := service.StartSession(testSession("session-1", "connector-1", 100)); err != nil {

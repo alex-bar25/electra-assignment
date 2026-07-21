@@ -13,6 +13,11 @@ func (config StationConfig) Validate() error {
 	if !isPositiveFinite(config.GridCapacityKw) {
 		return fmt.Errorf("grid capacity must be positive")
 	}
+	if config.BESS != nil {
+		if err := validateBESS(*config.BESS); err != nil {
+			return err
+		}
+	}
 
 	chargerIDs := make(map[string]struct{}, len(config.Chargers))
 	connectorIDs := make(map[string]struct{})
@@ -120,6 +125,25 @@ func validateConnector(connector ConnectorConfig, connectorIDs map[string]struct
 		return fmt.Errorf("connector %q has invalid status %q", connector.ID, connector.Status)
 	}
 
+	return nil
+}
+
+func validateBESS(bess BESSConfig) error {
+	if !isPositiveFinite(bess.EnergyCapacityKwh) {
+		return fmt.Errorf("BESS energy capacity must be positive")
+	}
+	if !isPositiveFinite(bess.MaxChargePowerKw) {
+		return fmt.Errorf("BESS maximum charge power must be positive")
+	}
+	if !isPositiveFinite(bess.MaxDischargePowerKw) {
+		return fmt.Errorf("BESS maximum discharge power must be positive")
+	}
+	if bess.MinSocPercent <= 0 || bess.MinSocPercent >= 100 || math.IsInf(bess.MinSocPercent, 0) || math.IsNaN(bess.MinSocPercent) {
+		return fmt.Errorf("BESS minimum SoC must be between 0 and 100 percent")
+	}
+	if bess.SocPercent < bess.MinSocPercent || bess.SocPercent > 100 || math.IsInf(bess.SocPercent, 0) || math.IsNaN(bess.SocPercent) {
+		return fmt.Errorf("BESS SoC must be between its minimum and 100 percent")
+	}
 	return nil
 }
 

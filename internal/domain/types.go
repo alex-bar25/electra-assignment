@@ -20,6 +20,15 @@ type StationConfig struct {
 	ID             string          `json:"id"`
 	GridCapacityKw float64         `json:"gridCapacityKw"`
 	Chargers       []ChargerConfig `json:"chargers"`
+	BESS           *BESSConfig     `json:"bess,omitempty"`
+}
+
+type BESSConfig struct {
+	EnergyCapacityKwh   float64 `json:"energyCapacityKwh"`
+	SocPercent          float64 `json:"socPercent"`
+	MaxChargePowerKw    float64 `json:"maxChargePowerKw"`
+	MaxDischargePowerKw float64 `json:"maxDischargePowerKw"`
+	MinSocPercent       float64 `json:"minSocPercent"`
 }
 
 type ChargerConfig struct {

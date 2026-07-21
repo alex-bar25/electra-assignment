@@ -65,6 +65,50 @@ func validStationConfig() StationConfig {
 	}
 }
 
+func TestStationConfigValidateBESS(t *testing.T) {
+	validBESS := func() *BESSConfig {
+		return &BESSConfig{
+			EnergyCapacityKwh:   200,
+			SocPercent:          50,
+			MaxChargePowerKw:    200,
+			MaxDischargePowerKw: 200,
+			MinSocPercent:       10,
+		}
+	}
+
+	t.Run("accepts valid BESS configuration", func(t *testing.T) {
+		config := validStationConfig()
+		config.BESS = validBESS()
+		if err := config.Validate(); err != nil {
+			t.Fatalf("Validate() error = %v", err)
+		}
+	})
+
+	tests := []struct {
+		name   string
+		mutate func(*BESSConfig)
+	}{
+		{name: "non-positive energy capacity", mutate: func(bess *BESSConfig) { bess.EnergyCapacityKwh = 0 }},
+		{name: "non-positive charge power", mutate: func(bess *BESSConfig) { bess.MaxChargePowerKw = 0 }},
+		{name: "non-finite discharge power", mutate: func(bess *BESSConfig) { bess.MaxDischargePowerKw = math.NaN() }},
+		{name: "zero minimum SoC", mutate: func(bess *BESSConfig) { bess.MinSocPercent = 0 }},
+		{name: "minimum SoC at 100 percent", mutate: func(bess *BESSConfig) { bess.MinSocPercent = 100 }},
+		{name: "SoC below minimum", mutate: func(bess *BESSConfig) { bess.SocPercent = 9 }},
+		{name: "SoC above 100 percent", mutate: func(bess *BESSConfig) { bess.SocPercent = 101 }},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config := validStationConfig()
+			config.BESS = validBESS()
+			test.mutate(config.BESS)
+			if err := config.Validate(); err == nil {
+				t.Fatal("Validate() error = nil, want an error")
+			}
+		})
+	}
+}
+
 func TestSessionValidate(t *testing.T) {
 	curveLimit := 120.0
 	valid := Session{

@@ -46,6 +46,10 @@ func (service *Service) Configure(config domain.StationConfig) error {
 
 func cloneConfig(config domain.StationConfig) domain.StationConfig {
 	clone := config
+	if config.BESS != nil {
+		bess := *config.BESS
+		clone.BESS = &bess
+	}
 	clone.Chargers = make([]domain.ChargerConfig, len(config.Chargers))
 	for index, charger := range config.Chargers {
 		clone.Chargers[index] = charger
