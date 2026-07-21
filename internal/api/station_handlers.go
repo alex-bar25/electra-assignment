@@ -8,10 +8,6 @@ import (
 	"electra-assignment/internal/service"
 )
 
-type healthResponse struct {
-	Status string `json:"status"`
-}
-
 func (api handler) configureStation(response http.ResponseWriter, request *http.Request) {
 	var config domain.StationConfig
 	if err := decodeJSON(request, &config); err != nil {
@@ -33,10 +29,6 @@ func (api handler) configureStation(response http.ResponseWriter, request *http.
 	}
 	api.logger.Info("station configured", "station_id", config.ID)
 	api.writeJSON(response, http.StatusOK, state)
-}
-
-func (api handler) health(response http.ResponseWriter, _ *http.Request) {
-	api.writeJSON(response, http.StatusOK, healthResponse{Status: "ok"})
 }
 
 func (api handler) getStation(response http.ResponseWriter, _ *http.Request) {
