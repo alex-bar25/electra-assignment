@@ -1,0 +1,75 @@
+{
+  "station": {
+    "id": "station-1",
+    "gridCapacityKw": 400,
+    "chargers": [
+      {
+        "id": "charger-1",
+        "maxPowerKw": 300,
+        "status": "available",
+        "connectors": [
+          {
+            "id": "connector-1",
+            "type": "CCS",
+            "maxPowerKw": 300,
+            "status": "available"
+          },
+          {
+            "id": "connector-2",
+            "type": "CCS",
+            "maxPowerKw": 300,
+            "status": "available"
+          }
+        ]
+      },
+      {
+        "id": "charger-2",
+        "maxPowerKw": 300,
+        "status": "available",
+        "connectors": [
+          {
+            "id": "connector-3",
+            "type": "CCS",
+            "maxPowerKw": 300,
+            "status": "available"
+          },
+          {
+            "id": "connector-4",
+            "type": "CCS",
+            "maxPowerKw": 300,
+            "status": "available"
+          }
+        ]
+      }
+    ]
+  },
+  "sessions": {
+    "first": {
+      "id": "session-1",
+      "connectorId": "connector-1",
+      "requestedPowerKw": 300,
+      "vehicleMaxPowerKw": 300
+    },
+    "second": {
+      "id": "session-2",
+      "connectorId": "connector-3",
+      "requestedPowerKw": 300,
+      "vehicleMaxPowerKw": 300
+    }
+  },
+  "updates": {
+    "limitFirst": {
+      "requestedPowerKw": 100
+    },
+    "restoreFirst": {
+      "requestedPowerKw": 300
+    }
+  },
+  "expectedPowerKw": {
+    "firstAlone": 300,
+    "shared": 200,
+    "limitedFirst": 100,
+    "afterUpdateSecond": 300,
+    "afterStopSecond": 300
+  }
+}
