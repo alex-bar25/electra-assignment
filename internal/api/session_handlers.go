@@ -17,6 +17,13 @@ type startSessionRequest struct {
 	MinimumPowerKw       float64  `json:"minimumPowerKw,omitempty"`
 }
 
+type updateSessionRequest struct {
+	RequestedPowerKw     *float64 `json:"requestedPowerKw"`
+	VehicleMaxPowerKw    *float64 `json:"vehicleMaxPowerKw"`
+	ChargingCurveLimitKw *float64 `json:"chargingCurveLimitKw"`
+	MinimumPowerKw       *float64 `json:"minimumPowerKw"`
+}
+
 func (api handler) startSession(response http.ResponseWriter, request *http.Request) {
 	var body startSessionRequest
 	if err := decodeJSON(request, &body); err != nil {
@@ -34,7 +41,7 @@ func (api handler) startSession(response http.ResponseWriter, request *http.Requ
 		MinimumPowerKw:       body.MinimumPowerKw,
 	})
 	if err != nil {
-		api.writeStartSessionError(response, err)
+		api.writeSessionError(response, "start", err)
 		return
 	}
 
@@ -42,7 +49,36 @@ func (api handler) startSession(response http.ResponseWriter, request *http.Requ
 	api.writeJSON(response, http.StatusCreated, session)
 }
 
-func (api handler) writeStartSessionError(response http.ResponseWriter, err error) {
+func (api handler) updateSession(response http.ResponseWriter, request *http.Request) {
+	var body updateSessionRequest
+	if err := decodeJSON(request, &body); err != nil {
+		api.logger.Warn("reject malformed session update", "error", err)
+		api.writeError(response, http.StatusBadRequest, "invalid_request", "request body must contain one valid session update")
+		return
+	}
+	if body.RequestedPowerKw == nil && body.VehicleMaxPowerKw == nil &&
+		body.ChargingCurveLimitKw == nil && body.MinimumPowerKw == nil {
+		api.logger.Warn("reject empty session update")
+		api.writeError(response, http.StatusBadRequest, "invalid_request", "at least one session power limit must be provided")
+		return
+	}
+
+	session, err := api.station.UpdateSession(request.PathValue("sessionId"), service.SessionUpdate{
+		RequestedPowerKw:     body.RequestedPowerKw,
+		VehicleMaxPowerKw:    body.VehicleMaxPowerKw,
+		ChargingCurveLimitKw: body.ChargingCurveLimitKw,
+		MinimumPowerKw:       body.MinimumPowerKw,
+	})
+	if err != nil {
+		api.writeSessionError(response, "update", err)
+		return
+	}
+
+	api.logger.Info("session updated", "session_id", session.ID)
+	api.writeJSON(response, http.StatusOK, session)
+}
+
+func (api handler) writeSessionError(response http.ResponseWriter, operation string, err error) {
 	status := http.StatusBadRequest
 	code := "invalid_session"
 
@@ -53,6 +89,9 @@ func (api handler) writeStartSessionError(response http.ResponseWriter, err erro
 	case errors.Is(err, service.ErrConnectorNotFound):
 		status = http.StatusNotFound
 		code = "connector_not_found"
+	case errors.Is(err, service.ErrSessionNotFound):
+		status = http.StatusNotFound
+		code = "session_not_found"
 	case errors.Is(err, service.ErrDuplicateSession):
 		status = http.StatusConflict
 		code = "duplicate_session"
@@ -64,6 +103,6 @@ func (api handler) writeStartSessionError(response http.ResponseWriter, err erro
 		code = "hardware_unavailable"
 	}
 
-	api.logger.Warn("reject session start", "code", code, "error", err)
+	api.logger.Warn("reject session request", "operation", operation, "code", code, "error", err)
 	api.writeError(response, status, code, err.Error())
 }

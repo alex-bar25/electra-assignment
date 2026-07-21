@@ -101,15 +101,107 @@ func TestStartSessionMapsLifecycleErrors(t *testing.T) {
 	}
 }
 
+func TestUpdateSessionRecomputesAllocations(t *testing.T) {
+	station := service.New()
+	if err := station.Configure(testStationConfig()); err != nil {
+		t.Fatalf("configure station: %v", err)
+	}
+	if _, err := station.StartSession(domain.Session{
+		ID: "session-1", ConnectorID: "connector-1", RequestedPowerKw: 100, VehicleMaxPowerKw: 100,
+	}); err != nil {
+		t.Fatalf("start first session: %v", err)
+	}
+	if _, err := station.StartSession(domain.Session{
+		ID: "session-2", ConnectorID: "connector-2", RequestedPowerKw: 100, VehicleMaxPowerKw: 100,
+	}); err != nil {
+		t.Fatalf("start second session: %v", err)
+	}
+	handler := New(station, slog.New(slog.DiscardHandler))
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/sessions/session-2",
+		bytes.NewBufferString(`{"requestedPowerKw":20}`),
+	))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var updated domain.Session
+	if err := json.NewDecoder(response.Body).Decode(&updated); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if updated.ID != "session-2" || updated.AssignedPowerKw != 20 || updated.EffectiveDemandKw != 20 {
+		t.Fatalf("updated session = %#v", updated)
+	}
+
+	state, err := station.Snapshot()
+	if err != nil {
+		t.Fatalf("get station state: %v", err)
+	}
+	if state.Sessions[0].AssignedPowerKw != 80 || state.Sessions[1].AssignedPowerKw != 20 {
+		t.Fatalf("allocations = %#v, want 80/20 kW", state.Sessions)
+	}
+}
+
+func TestUpdateSessionRejectsInvalidRequests(t *testing.T) {
+	tests := []struct {
+		name          string
+		sessionID     string
+		body          string
+		wantStatus    int
+		wantErrorCode string
+	}{
+		{name: "empty update", sessionID: "session-1", body: `{}`, wantStatus: http.StatusBadRequest, wantErrorCode: "invalid_request"},
+		{name: "invalid power", sessionID: "session-1", body: `{"requestedPowerKw":-1}`, wantStatus: http.StatusBadRequest, wantErrorCode: "invalid_session"},
+		{name: "unknown session", sessionID: "missing", body: `{"requestedPowerKw":20}`, wantStatus: http.StatusNotFound, wantErrorCode: "session_not_found"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			station := service.New()
+			if err := station.Configure(testStationConfig()); err != nil {
+				t.Fatalf("configure station: %v", err)
+			}
+			if _, err := station.StartSession(domain.Session{
+				ID: "session-1", ConnectorID: "connector-1", RequestedPowerKw: 100, VehicleMaxPowerKw: 100,
+			}); err != nil {
+				t.Fatalf("start session: %v", err)
+			}
+			handler := New(station, slog.New(slog.DiscardHandler))
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, httptest.NewRequest(
+				http.MethodPatch,
+				"/api/v1/sessions/"+test.sessionID,
+				bytes.NewBufferString(test.body),
+			))
+
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d; body = %s", response.Code, test.wantStatus, response.Body.String())
+			}
+			var body errorResponse
+			if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if body.Code != test.wantErrorCode {
+				t.Fatalf("error code = %q, want %q", body.Code, test.wantErrorCode)
+			}
+		})
+	}
+}
+
 func testStationConfig() domain.StationConfig {
 	return domain.StationConfig{
 		ID:             "station-1",
 		GridCapacityKw: 100,
 		Chargers: []domain.ChargerConfig{{
 			ID: "charger-1", MaxPowerKw: 100, Status: domain.OperationalStatusAvailable,
-			Connectors: []domain.ConnectorConfig{{
-				ID: "connector-1", Type: "CCS", MaxPowerKw: 100, Status: domain.OperationalStatusAvailable,
-			}},
+			Connectors: []domain.ConnectorConfig{
+				{ID: "connector-1", Type: "CCS", MaxPowerKw: 100, Status: domain.OperationalStatusAvailable},
+				{ID: "connector-2", Type: "CCS", MaxPowerKw: 100, Status: domain.OperationalStatusAvailable},
+			},
 		}},
 	}
 }
