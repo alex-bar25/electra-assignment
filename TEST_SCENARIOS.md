@@ -290,9 +290,9 @@ This demonstrates that accepted HTTP state changes and their synchronous allocat
 
 ---
 
-## Optional Advanced Scenarios
+## Implemented Extension Scenarios
 
-These scenarios should only be implemented after the core grid-only allocation behavior is complete and tested.
+These scenarios cover the minimum-power behavior implemented after the core grid-only allocator.
 
 ### 14. Minimum-power admission and waiting behavior
 
@@ -313,7 +313,7 @@ The admission order should follow the documented deterministic policy.
 
 Allocating tiny amounts of unusable power to every session may be worse than temporarily pausing one session.
 
-This validates the optional minimum-threshold policy discussed with the Product Manager.
+This validates the minimum-threshold policy chosen for this submission.
 
 ---
 
@@ -334,6 +334,8 @@ The waiting session is immediately reconsidered and begins charging when enough 
 This validates that admission is not a one-time decision and that waiting sessions respond correctly to station-state changes.
 
 ---
+
+## Optional Advanced Scenarios
 
 ### 16. BESS boost and SoC floor
 
@@ -364,6 +366,23 @@ This validates the primary value of the optional BESS feature while also enforci
 ---
 
 ## Execution Strategy
+
+### Automated coverage map
+
+| Scenarios | Primary Go coverage | Runnable Docker coverage |
+| --- | --- | --- |
+| 1–2 | `TestAllocateRespectsEffectiveDemandLimits` | Basic first-session allocation only |
+| 3–4 | `TestAllocateSharesAndRedistributesGridPower` | Fair sharing and update redistribution |
+| 5 | `TestAllocateRedistributesAcrossThreeDemandLevels` | Covered by focused Go test |
+| 6 | `TestAllocateRespectsSharedChargerLimit` | Covered by focused Go test |
+| 7 | `TestAllocateRedistributesPastFullCharger` | Covered by focused Go test |
+| 8–9 | `TestServiceStopSessionRecomputesBeforeReturning`, `TestServiceChargingCurveUpdateRecomputesBeforeReturning` | Update and stop redistribution |
+| 10 | `TestAllocateReturnsZeroForUnavailableHardware` | Dynamic update coverage added with availability endpoints |
+| 11 | `TestAllocateProducesStableOutput` | Covered by focused Go test |
+| 12 | `TestServiceStartSessionRejectsInvalidOperations`, `TestServiceUpdateSessionRejectsInvalidOperationsAtomically`, `TestStartSessionMapsLifecycleErrors` | Docker runner is intentionally limited to the successful lifecycle |
+| 13 | `BenchmarkSessionLifecycle` | Docker lifecycle confirms the packaged HTTP path |
+| 14–15 | `TestAllocateWaitsWhenMinimumCannotBeReserved`, `TestServiceUpdateSessionReconsidersWaitingSessions` | Covered by focused Go/service tests |
+| 16 | Added only if BESS is implemented | Added only if BESS is implemented |
 
 The core allocation scenarios should primarily be implemented as fast, table-driven unit tests around the pure allocation engine.
 

@@ -179,6 +179,34 @@ func TestServiceUpdateSessionRecomputesBeforeReturning(t *testing.T) {
 	}
 }
 
+func TestServiceChargingCurveUpdateRecomputesBeforeReturning(t *testing.T) {
+	service := configuredService(t, testStationConfig())
+	if _, err := service.StartSession(testSession("session-1", "connector-1", 100)); err != nil {
+		t.Fatalf("first StartSession() error = %v", err)
+	}
+	if _, err := service.StartSession(testSession("session-2", "connector-2", 100)); err != nil {
+		t.Fatalf("second StartSession() error = %v", err)
+	}
+
+	curveLimit := 20.0
+	updated, err := service.UpdateSession("session-2", SessionUpdate{ChargingCurveLimitKw: &curveLimit})
+	if err != nil {
+		t.Fatalf("UpdateSession() error = %v", err)
+	}
+	if updated.RequestedPowerKw != 100 || updated.ChargingCurveLimitKw == nil ||
+		*updated.ChargingCurveLimitKw != 20 || updated.EffectiveDemandKw != 20 || updated.AssignedPowerKw != 20 {
+		t.Fatalf("updated session = %#v, want curve-limited allocation of 20 kW", updated)
+	}
+
+	state, err := service.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	if state.Sessions[0].AssignedPowerKw != 80 || state.Sessions[1].AssignedPowerKw != 20 {
+		t.Fatalf("sessions = %#v, want 80/20 kW", state.Sessions)
+	}
+}
+
 func TestServiceUpdateSessionReconsidersWaitingSessions(t *testing.T) {
 	config := testStationConfig()
 	config.GridCapacityKw = 10
