@@ -1,8 +1,42 @@
 package service
 
-import "electra-assignment/internal/domain"
+import (
+	"math"
+	"time"
+
+	"electra-assignment/internal/domain"
+)
 
 const powerEpsilon = 1e-9
+
+func (service *Service) AdvanceSimulation(elapsedSeconds float64) (StationState, error) {
+	if elapsedSeconds <= 0 || math.IsInf(elapsedSeconds, 0) || math.IsNaN(elapsedSeconds) {
+		return StationState{}, ErrInvalidSimulationDuration
+	}
+
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if service.config == nil {
+		return StationState{}, ErrStationNotConfigured
+	}
+	if service.bess == nil {
+		return StationState{}, ErrBESSNotConfigured
+	}
+
+	elapsedHours := elapsedSeconds / 3600
+	// Positive BESS power is discharge, so it reduces the battery's stored energy.
+	energyDeltaKwh := -service.bess.CurrentPowerKw * elapsedHours
+	service.bess.SocPercent += energyDeltaKwh / service.bess.EnergyCapacityKwh * 100
+	if service.bess.SocPercent < service.bess.MinSocPercent {
+		service.bess.SocPercent = service.bess.MinSocPercent
+	}
+	if service.bess.SocPercent > 100 {
+		service.bess.SocPercent = 100
+	}
+
+	service.recomputeLocked(time.Now().UTC())
+	return service.snapshotLocked(), nil
+}
 
 func newBESSState(config *domain.BESSConfig) *domain.BESSState {
 	if config == nil {

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"errors"
+	"math"
 	"testing"
 
 	"electra-assignment/internal/domain"
@@ -93,6 +95,105 @@ func TestBESSStateSnapshotIsCopied(t *testing.T) {
 	}
 	if second.BESS.SocPercent != 50 {
 		t.Fatalf("stored BESS SoC = %v, want 50", second.BESS.SocPercent)
+	}
+}
+
+func TestAdvanceSimulationUpdatesBESSSocFromPowerFlow(t *testing.T) {
+	tests := []struct {
+		name           string
+		configure      func(t *testing.T, service *Service)
+		wantSocPercent float64
+	}{
+		{
+			name: "discharging lowers SoC",
+			configure: func(t *testing.T, service *Service) {
+				startBESSSession(t, service, "session-1", "connector-1", 300)
+				startBESSSession(t, service, "session-2", "connector-2", 300)
+			},
+			wantSocPercent: 25,
+		},
+		{
+			name:           "charging raises SoC",
+			configure:      func(t *testing.T, service *Service) {},
+			wantSocPercent: 75,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service := configuredService(t, bessStationConfig(50))
+			test.configure(t, service)
+
+			state, err := service.AdvanceSimulation(15 * 60)
+			if err != nil {
+				t.Fatalf("AdvanceSimulation() error = %v", err)
+			}
+			if state.BESS.SocPercent != test.wantSocPercent {
+				t.Fatalf("SoC = %v, want %v", state.BESS.SocPercent, test.wantSocPercent)
+			}
+		})
+	}
+}
+
+func TestAdvanceSimulationClampsBESSSocAndRecomputes(t *testing.T) {
+	t.Run("minimum SoC", func(t *testing.T) {
+		service := configuredService(t, bessStationConfig(20))
+		startBESSSession(t, service, "session-1", "connector-1", 300)
+		startBESSSession(t, service, "session-2", "connector-2", 300)
+
+		state, err := service.AdvanceSimulation(15 * 60)
+		if err != nil {
+			t.Fatalf("AdvanceSimulation() error = %v", err)
+		}
+		if state.BESS.SocPercent != 10 || state.BESS.Mode != domain.BESSModeIdle {
+			t.Fatalf("BESS state = %#v, want 10%% and idle", state.BESS)
+		}
+		if state.Sessions[0].AssignedPowerKw != 200 || state.Sessions[1].AssignedPowerKw != 200 {
+			t.Fatalf("session allocations = %#v, want 200/200 kW after reaching minimum SoC", state.Sessions)
+		}
+	})
+
+	t.Run("full SoC", func(t *testing.T) {
+		service := configuredService(t, bessStationConfig(90))
+
+		state, err := service.AdvanceSimulation(15 * 60)
+		if err != nil {
+			t.Fatalf("AdvanceSimulation() error = %v", err)
+		}
+		if state.BESS.SocPercent != 100 || state.BESS.Mode != domain.BESSModeIdle {
+			t.Fatalf("BESS state = %#v, want 100%% and idle", state.BESS)
+		}
+	})
+}
+
+func TestAdvanceSimulationRejectsInvalidDuration(t *testing.T) {
+	tests := []float64{0, -1, math.NaN(), math.Inf(1)}
+	for _, elapsedSeconds := range tests {
+		service := configuredService(t, bessStationConfig(50))
+		_, err := service.AdvanceSimulation(elapsedSeconds)
+		if !errors.Is(err, ErrInvalidSimulationDuration) {
+			t.Fatalf("AdvanceSimulation(%v) error = %v, want %v", elapsedSeconds, err, ErrInvalidSimulationDuration)
+		}
+	}
+}
+
+func TestAdvanceSimulationRequiresConfiguredBESS(t *testing.T) {
+	tests := []struct {
+		name    string
+		service *Service
+		wantErr error
+	}{
+		{name: "station missing", service: New(), wantErr: ErrStationNotConfigured},
+		{name: "BESS missing", service: configuredService(t, testStationConfig()), wantErr: ErrBESSNotConfigured},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := test.service.AdvanceSimulation(60)
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("AdvanceSimulation() error = %v, want %v", err, test.wantErr)
+			}
+		})
 	}
 }
 

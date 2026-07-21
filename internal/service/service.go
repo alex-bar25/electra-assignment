@@ -9,14 +9,16 @@ import (
 )
 
 var (
-	ErrStationNotConfigured = errors.New("station is not configured")
-	ErrDuplicateSession     = errors.New("session already exists")
-	ErrChargerNotFound      = errors.New("charger not found")
-	ErrConnectorNotFound    = errors.New("connector not found")
-	ErrConnectorOccupied    = errors.New("connector is occupied")
-	ErrHardwareUnavailable  = errors.New("charger or connector is unavailable")
-	ErrMinimumExceedsDemand = errors.New("minimum power exceeds effective demand")
-	ErrSessionNotFound      = errors.New("session not found")
+	ErrStationNotConfigured      = errors.New("station is not configured")
+	ErrDuplicateSession          = errors.New("session already exists")
+	ErrChargerNotFound           = errors.New("charger not found")
+	ErrConnectorNotFound         = errors.New("connector not found")
+	ErrConnectorOccupied         = errors.New("connector is occupied")
+	ErrHardwareUnavailable       = errors.New("charger or connector is unavailable")
+	ErrMinimumExceedsDemand      = errors.New("minimum power exceeds effective demand")
+	ErrSessionNotFound           = errors.New("session not found")
+	ErrBESSNotConfigured         = errors.New("BESS is not configured")
+	ErrInvalidSimulationDuration = errors.New("elapsed seconds must be positive and finite")
 )
 
 type Service struct {
