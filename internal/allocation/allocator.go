@@ -102,6 +102,12 @@ func admitSessions(states []allocationState, remainingGrid float64, remainingByC
 }
 
 func distributePower(states []allocationState, remainingGrid float64, remainingByCharger map[string]float64) {
+	for index := range states {
+		if states[index].active && remainingByCharger[states[index].chargerID] <= epsilon {
+			states[index].active = false
+		}
+	}
+
 	// Raise the lowest assigned sessions until they catch the next level or
 	// reach a physical limit. This preserves max-min fairness after minimums.
 	for {

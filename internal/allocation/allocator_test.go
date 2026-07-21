@@ -95,6 +95,25 @@ func TestAllocateRespectsSharedChargerLimit(t *testing.T) {
 	assertPower(t, assignments, "session-3", 100)
 }
 
+func TestAllocateRedistributesPastFullCharger(t *testing.T) {
+	config := domain.StationConfig{ID: "station-1", GridCapacityKw: 100, Chargers: []domain.ChargerConfig{
+		{ID: "charger-1", MaxPowerKw: 5, Status: domain.OperationalStatusAvailable, Connectors: []domain.ConnectorConfig{
+			{ID: "connector-1", Type: "CCS", MaxPowerKw: 100, Status: domain.OperationalStatusAvailable},
+		}},
+		{ID: "charger-2", MaxPowerKw: 95, Status: domain.OperationalStatusAvailable, Connectors: []domain.ConnectorConfig{
+			{ID: "connector-2", Type: "CCS", MaxPowerKw: 100, Status: domain.OperationalStatusAvailable},
+		}},
+	}}
+	sessions := []domain.Session{
+		testSession("session-1", "connector-1", 100),
+		testSession("session-2", "connector-2", 100),
+	}
+
+	assignments := Allocate(config, sessions)
+	assertPower(t, assignments, "session-1", 5)
+	assertPower(t, assignments, "session-2", 95)
+}
+
 func TestAllocateReturnsZeroForUnavailableHardware(t *testing.T) {
 	config := stationWithOneCharger(100, 100, 100, 100)
 	config.Chargers[0].Connectors[1].Status = domain.OperationalStatusUnavailable
