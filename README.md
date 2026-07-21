@@ -76,6 +76,8 @@ State is held in memory and is reset whenever the process restarts. Replacing st
 | `PATCH` | `/api/v1/connectors/{connectorId}` | Change connector availability | `200` |
 | `POST` | `/api/v1/simulation/tick` | Advance BESS energy accounting | `200` |
 
+Session updates leave omitted limits unchanged. Send `"chargingCurveLimitKw": null` to remove an existing charging-curve limit.
+
 The simulation endpoint accepts elapsed time explicitly:
 
 ```json

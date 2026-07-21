@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -18,10 +19,20 @@ type startSessionRequest struct {
 }
 
 type updateSessionRequest struct {
-	RequestedPowerKw     *float64 `json:"requestedPowerKw"`
-	VehicleMaxPowerKw    *float64 `json:"vehicleMaxPowerKw"`
-	ChargingCurveLimitKw *float64 `json:"chargingCurveLimitKw"`
-	MinimumPowerKw       *float64 `json:"minimumPowerKw"`
+	RequestedPowerKw     *float64        `json:"requestedPowerKw"`
+	VehicleMaxPowerKw    *float64        `json:"vehicleMaxPowerKw"`
+	ChargingCurveLimitKw optionalFloat64 `json:"chargingCurveLimitKw"`
+	MinimumPowerKw       *float64        `json:"minimumPowerKw"`
+}
+
+type optionalFloat64 struct {
+	value *float64
+	set   bool
+}
+
+func (field *optionalFloat64) UnmarshalJSON(data []byte) error {
+	field.set = true
+	return json.Unmarshal(data, &field.value)
 }
 
 func (api handler) startSession(response http.ResponseWriter, request *http.Request) {
@@ -57,17 +68,18 @@ func (api handler) updateSession(response http.ResponseWriter, request *http.Req
 		return
 	}
 	if body.RequestedPowerKw == nil && body.VehicleMaxPowerKw == nil &&
-		body.ChargingCurveLimitKw == nil && body.MinimumPowerKw == nil {
+		!body.ChargingCurveLimitKw.set && body.MinimumPowerKw == nil {
 		api.logger.Warn("reject empty session update")
 		api.writeError(response, http.StatusBadRequest, "invalid_request", "at least one session power limit must be provided")
 		return
 	}
 
 	session, err := api.station.UpdateSession(request.PathValue("sessionId"), service.SessionUpdate{
-		RequestedPowerKw:     body.RequestedPowerKw,
-		VehicleMaxPowerKw:    body.VehicleMaxPowerKw,
-		ChargingCurveLimitKw: body.ChargingCurveLimitKw,
-		MinimumPowerKw:       body.MinimumPowerKw,
+		RequestedPowerKw:        body.RequestedPowerKw,
+		VehicleMaxPowerKw:       body.VehicleMaxPowerKw,
+		ChargingCurveLimitKw:    body.ChargingCurveLimitKw.value,
+		ClearChargingCurveLimit: body.ChargingCurveLimitKw.set && body.ChargingCurveLimitKw.value == nil,
+		MinimumPowerKw:          body.MinimumPowerKw,
 	})
 	if err != nil {
 		api.writeSessionError(response, "update", err)

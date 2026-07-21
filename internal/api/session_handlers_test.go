@@ -145,6 +145,39 @@ func TestUpdateSessionRecomputesAllocations(t *testing.T) {
 	}
 }
 
+func TestUpdateSessionClearsChargingCurveLimit(t *testing.T) {
+	station := service.New()
+	if _, err := station.Configure(testStationConfig()); err != nil {
+		t.Fatalf("configure station: %v", err)
+	}
+	curveLimit := 20.0
+	if _, err := station.StartSession(domain.Session{
+		ID: "session-1", ConnectorID: "connector-1", RequestedPowerKw: 100,
+		VehicleMaxPowerKw: 100, ChargingCurveLimitKw: &curveLimit,
+	}); err != nil {
+		t.Fatalf("start session: %v", err)
+	}
+	handler := New(station, slog.New(slog.DiscardHandler))
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/sessions/session-1",
+		bytes.NewBufferString(`{"chargingCurveLimitKw":null}`),
+	))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var updated domain.Session
+	if err := json.NewDecoder(response.Body).Decode(&updated); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if updated.ChargingCurveLimitKw != nil || updated.EffectiveDemandKw != 100 || updated.AssignedPowerKw != 100 {
+		t.Fatalf("updated session = %#v, want cleared curve limit and 100 kW allocation", updated)
+	}
+}
+
 func TestUpdateSessionRejectsInvalidRequests(t *testing.T) {
 	tests := []struct {
 		name          string

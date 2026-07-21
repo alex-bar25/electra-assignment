@@ -8,10 +8,11 @@ import (
 )
 
 type SessionUpdate struct {
-	RequestedPowerKw     *float64
-	VehicleMaxPowerKw    *float64
-	ChargingCurveLimitKw *float64
-	MinimumPowerKw       *float64
+	RequestedPowerKw        *float64
+	VehicleMaxPowerKw       *float64
+	ChargingCurveLimitKw    *float64
+	ClearChargingCurveLimit bool
+	MinimumPowerKw          *float64
 }
 
 func (service *Service) StartSession(session domain.Session) (domain.Session, error) {
@@ -71,7 +72,9 @@ func (service *Service) UpdateSession(sessionID string, update SessionUpdate) (d
 	if update.VehicleMaxPowerKw != nil {
 		candidate.VehicleMaxPowerKw = *update.VehicleMaxPowerKw
 	}
-	if update.ChargingCurveLimitKw != nil {
+	if update.ClearChargingCurveLimit {
+		candidate.ChargingCurveLimitKw = nil
+	} else if update.ChargingCurveLimitKw != nil {
 		curveLimit := *update.ChargingCurveLimitKw
 		candidate.ChargingCurveLimitKw = &curveLimit
 	}
