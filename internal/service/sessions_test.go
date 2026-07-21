@@ -285,7 +285,7 @@ func TestServiceStartSessionRejectsInvalidOperations(t *testing.T) {
 func configuredService(t *testing.T, config domain.StationConfig) *Service {
 	t.Helper()
 	service := New()
-	if err := service.Configure(config); err != nil {
+	if _, err := service.Configure(config); err != nil {
 		t.Fatalf("Configure() error = %v", err)
 	}
 	return service

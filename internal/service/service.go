@@ -33,9 +33,9 @@ func New() *Service {
 	return &Service{sessions: make(map[string]domain.Session)}
 }
 
-func (service *Service) Configure(config domain.StationConfig) error {
+func (service *Service) Configure(config domain.StationConfig) (StationState, error) {
 	if err := config.Validate(); err != nil {
-		return err
+		return StationState{}, err
 	}
 	config = cloneConfig(config)
 
@@ -45,7 +45,7 @@ func (service *Service) Configure(config domain.StationConfig) error {
 	service.sessions = make(map[string]domain.Session)
 	service.bess = newBESSState(config.BESS)
 	service.recomputeLocked(time.Now().UTC())
-	return nil
+	return service.snapshotLocked(), nil
 }
 
 func cloneConfig(config domain.StationConfig) domain.StationConfig {

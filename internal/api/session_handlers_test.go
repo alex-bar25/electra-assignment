@@ -14,7 +14,7 @@ import (
 
 func TestStartSession(t *testing.T) {
 	station := service.New()
-	if err := station.Configure(testStationConfig()); err != nil {
+	if _, err := station.Configure(testStationConfig()); err != nil {
 		t.Fatalf("configure station: %v", err)
 	}
 	handler := New(station, slog.New(slog.DiscardHandler))
@@ -73,7 +73,7 @@ func TestStartSessionMapsLifecycleErrors(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			station := service.New()
-			if err := station.Configure(testStationConfig()); err != nil {
+			if _, err := station.Configure(testStationConfig()); err != nil {
 				t.Fatalf("configure station: %v", err)
 			}
 			if test.existing != nil {
@@ -103,7 +103,7 @@ func TestStartSessionMapsLifecycleErrors(t *testing.T) {
 
 func TestUpdateSessionRecomputesAllocations(t *testing.T) {
 	station := service.New()
-	if err := station.Configure(testStationConfig()); err != nil {
+	if _, err := station.Configure(testStationConfig()); err != nil {
 		t.Fatalf("configure station: %v", err)
 	}
 	if _, err := station.StartSession(domain.Session{
@@ -161,7 +161,7 @@ func TestUpdateSessionRejectsInvalidRequests(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			station := service.New()
-			if err := station.Configure(testStationConfig()); err != nil {
+			if _, err := station.Configure(testStationConfig()); err != nil {
 				t.Fatalf("configure station: %v", err)
 			}
 			if _, err := station.StartSession(domain.Session{
@@ -194,7 +194,7 @@ func TestUpdateSessionRejectsInvalidRequests(t *testing.T) {
 
 func TestStopSessionRedistributesAllocations(t *testing.T) {
 	station := service.New()
-	if err := station.Configure(testStationConfig()); err != nil {
+	if _, err := station.Configure(testStationConfig()); err != nil {
 		t.Fatalf("configure station: %v", err)
 	}
 	for _, session := range []domain.Session{
@@ -224,7 +224,7 @@ func TestStopSessionRedistributesAllocations(t *testing.T) {
 
 func TestStopSessionReturnsNotFound(t *testing.T) {
 	station := service.New()
-	if err := station.Configure(testStationConfig()); err != nil {
+	if _, err := station.Configure(testStationConfig()); err != nil {
 		t.Fatalf("configure station: %v", err)
 	}
 	handler := New(station, slog.New(slog.DiscardHandler))

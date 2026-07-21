@@ -15,16 +15,10 @@ func (api handler) configureStation(response http.ResponseWriter, request *http.
 		api.writeError(response, http.StatusBadRequest, "invalid_request", "request body must contain one valid station configuration")
 		return
 	}
-	if err := api.station.Configure(config); err != nil {
+	state, err := api.station.Configure(config)
+	if err != nil {
 		api.logger.Warn("reject invalid station configuration", "error", err)
 		api.writeError(response, http.StatusBadRequest, "invalid_station_config", err.Error())
-		return
-	}
-
-	state, err := api.station.Snapshot()
-	if err != nil {
-		api.logger.Error("get state after station configuration", "error", err)
-		api.writeError(response, http.StatusInternalServerError, "internal_error", "an unexpected error occurred")
 		return
 	}
 	api.logger.Info("station configured", "station_id", config.ID)

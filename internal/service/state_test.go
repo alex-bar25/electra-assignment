@@ -8,7 +8,7 @@ import (
 
 func TestServiceSnapshotReturnsCopies(t *testing.T) {
 	service := New()
-	if err := service.Configure(testStationConfig()); err != nil {
+	if _, err := service.Configure(testStationConfig()); err != nil {
 		t.Fatalf("Configure() error = %v", err)
 	}
 

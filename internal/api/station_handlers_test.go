@@ -3,8 +3,10 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"electra-assignment/internal/domain"
@@ -69,6 +71,57 @@ func TestConfigureAndGetStation(t *testing.T) {
 	}
 	if queriedState.StationID != configuredState.StationID || len(queriedState.Chargers) != 1 {
 		t.Fatalf("queried state = %#v", queriedState)
+	}
+}
+
+func TestConcurrentConfigureReturnsOwnState(t *testing.T) {
+	handler := newTestHandler()
+	const requestCount = 1000
+
+	start := make(chan struct{})
+	errors := make(chan error, requestCount)
+	var requests sync.WaitGroup
+	for index := range requestCount {
+		stationID := fmt.Sprintf("station-%d", index)
+		config := testStationConfig()
+		config.ID = stationID
+		body, err := json.Marshal(config)
+		if err != nil {
+			t.Fatalf("marshal station %q: %v", stationID, err)
+		}
+
+		requests.Add(1)
+		go func() {
+			defer requests.Done()
+			<-start
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(
+				http.MethodPut,
+				"/api/v1/station/config",
+				bytes.NewReader(body),
+			))
+			if response.Code != http.StatusOK {
+				errors <- fmt.Errorf("station %q status = %d; body = %s", stationID, response.Code, response.Body.String())
+				return
+			}
+
+			var state service.StationState
+			if err := json.NewDecoder(response.Body).Decode(&state); err != nil {
+				errors <- fmt.Errorf("decode station %q response: %w", stationID, err)
+				return
+			}
+			if state.StationID != stationID {
+				errors <- fmt.Errorf("station %q received state for %q", stationID, state.StationID)
+			}
+		}()
+	}
+
+	close(start)
+	requests.Wait()
+	close(errors)
+	for err := range errors {
+		t.Error(err)
 	}
 }
 

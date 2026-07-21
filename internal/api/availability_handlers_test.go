@@ -84,7 +84,7 @@ func TestUpdateHardwareAvailabilityErrors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			station := service.New()
 			if test.configured {
-				if err := station.Configure(availabilityStationConfig()); err != nil {
+				if _, err := station.Configure(availabilityStationConfig()); err != nil {
 					t.Fatalf("configure station: %v", err)
 				}
 			}
@@ -116,7 +116,7 @@ func TestUpdateHardwareAvailabilityErrors(t *testing.T) {
 func configuredAvailabilityService(t *testing.T) *service.Service {
 	t.Helper()
 	station := service.New()
-	if err := station.Configure(availabilityStationConfig()); err != nil {
+	if _, err := station.Configure(availabilityStationConfig()); err != nil {
 		t.Fatalf("configure station: %v", err)
 	}
 	return station

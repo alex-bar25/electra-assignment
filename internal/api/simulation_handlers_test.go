@@ -14,7 +14,7 @@ import (
 
 func TestAdvanceSimulation(t *testing.T) {
 	station := service.New()
-	if err := station.Configure(testBESSStationConfig()); err != nil {
+	if _, err := station.Configure(testBESSStationConfig()); err != nil {
 		t.Fatalf("configure station: %v", err)
 	}
 	response := httptest.NewRecorder()
@@ -60,7 +60,7 @@ func TestAdvanceSimulationErrors(t *testing.T) {
 				if test.withBESS {
 					config = testBESSStationConfig()
 				}
-				if err := station.Configure(config); err != nil {
+				if _, err := station.Configure(config); err != nil {
 					t.Fatalf("configure station: %v", err)
 				}
 			}

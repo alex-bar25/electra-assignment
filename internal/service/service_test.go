@@ -13,7 +13,7 @@ func TestServiceConfigureAndSnapshot(t *testing.T) {
 		t.Fatalf("Snapshot() error = %v, want ErrStationNotConfigured", err)
 	}
 
-	if err := service.Configure(testStationConfig()); err != nil {
+	if _, err := service.Configure(testStationConfig()); err != nil {
 		t.Fatalf("Configure() error = %v", err)
 	}
 	state, err := service.Snapshot()
