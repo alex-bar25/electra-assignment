@@ -203,9 +203,10 @@ This validates dynamic session updates and confirms that newly available power i
 
 **Expected result**
 
-- Session A receives `0 kW`
-- Its status reflects the chosen unavailable or interrupted behavior
-- Session B receives any newly available station power
+- Session A is ended and removed from the active-session state
+- Session B immediately receives any newly available station power
+- OPS reports the affected connector or charger as unavailable and drawing `0 kW`
+- Restored hardware can accept a new session
 - All grid, charger, and connector constraints remain valid
 
 **Why this scenario matters**
@@ -278,11 +279,11 @@ Run the representative lifecycle benchmark:
 go test ./internal/api -run '^$' -bench BenchmarkSessionLifecycle -benchtime=100x
 ```
 
-Each benchmark operation creates a fresh station service and exercises configuration, session start, session update, and session stop through the real HTTP router.
+Each benchmark operation creates a fresh station service and exercises the complete successful HTTP flow through the real router: health, station configuration/query, session start/update/stop, connector outage/restoration, and charger outage/restoration.
 
 **Expected result**
 
-The reported `ns/op` for the complete lifecycle remains below `1,000,000,000 ns` (one second).
+The reported `ns/op` for the entire request sequence remains below `1,000,000,000 ns` (one second). This is a stricter demonstration than measuring the brief's limit independently for each accepted event.
 
 **Why this scenario matters**
 
@@ -377,10 +378,10 @@ This validates the primary value of the optional BESS feature while also enforci
 | 6 | `TestAllocateRespectsSharedChargerLimit` | Covered by focused Go test |
 | 7 | `TestAllocateRedistributesPastFullCharger` | Covered by focused Go test |
 | 8–9 | `TestServiceStopSessionRecomputesBeforeReturning`, `TestServiceChargingCurveUpdateRecomputesBeforeReturning` | Update and stop redistribution |
-| 10 | `TestAllocateReturnsZeroForUnavailableHardware` | Dynamic update coverage added with availability endpoints |
+| 10 | `TestAllocateReturnsZeroForUnavailableHardware`, `TestUpdateConnectorStatusEndsSessionAndRedistributesPower`, `TestUpdateChargerStatusEndsAttachedSessionsAndRedistributesPower`, `TestUpdateConnectorAvailability`, `TestUpdateChargerAvailability` | Connector and charger outage/restoration, session termination, redistribution, and OPS visibility |
 | 11 | `TestAllocateProducesStableOutput` | Covered by focused Go test |
 | 12 | `TestServiceStartSessionRejectsInvalidOperations`, `TestServiceUpdateSessionRejectsInvalidOperationsAtomically`, `TestStartSessionMapsLifecycleErrors` | Docker runner is intentionally limited to the successful lifecycle |
-| 13 | `BenchmarkSessionLifecycle` | Docker lifecycle confirms the packaged HTTP path |
+| 13 | `BenchmarkSessionLifecycle` | The packaged runner confirms the same successful mutation paths through real HTTP |
 | 14–15 | `TestAllocateWaitsWhenMinimumCannotBeReserved`, `TestServiceUpdateSessionReconsidersWaitingSessions` | Covered by focused Go/service tests |
 | 16 | Added only if BESS is implemented | Added only if BESS is implemented |
 

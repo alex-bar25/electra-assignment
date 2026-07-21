@@ -55,6 +55,18 @@
       "connectorId": "connector-3",
       "requestedPowerKw": 300,
       "vehicleMaxPowerKw": 300
+    },
+    "afterConnectorRestore": {
+      "id": "session-3",
+      "connectorId": "connector-1",
+      "requestedPowerKw": 300,
+      "vehicleMaxPowerKw": 300
+    },
+    "beforeChargerOutage": {
+      "id": "session-4",
+      "connectorId": "connector-1",
+      "requestedPowerKw": 300,
+      "vehicleMaxPowerKw": 300
     }
   },
   "updates": {
@@ -70,6 +82,7 @@
     "shared": 200,
     "limitedFirst": 100,
     "afterUpdateSecond": 300,
-    "afterStopSecond": 300
+    "afterStopSecond": 300,
+    "afterOutageSecond": 300
   }
 }

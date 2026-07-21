@@ -23,10 +23,20 @@ func BenchmarkSessionLifecycle(b *testing.B) {
 		body       []byte
 		wantStatus int
 	}{
+		{method: http.MethodGet, path: "/health", wantStatus: http.StatusOK},
 		{method: http.MethodPut, path: "/api/v1/station/config", body: configBody, wantStatus: http.StatusOK},
+		{method: http.MethodGet, path: "/api/v1/station", wantStatus: http.StatusOK},
 		{method: http.MethodPost, path: "/api/v1/sessions", body: []byte(`{"id":"session-1","connectorId":"connector-1","requestedPowerKw":100,"vehicleMaxPowerKw":100}`), wantStatus: http.StatusCreated},
+		{method: http.MethodPost, path: "/api/v1/sessions", body: []byte(`{"id":"session-2","connectorId":"connector-2","requestedPowerKw":100,"vehicleMaxPowerKw":100}`), wantStatus: http.StatusCreated},
 		{method: http.MethodPatch, path: "/api/v1/sessions/session-1", body: []byte(`{"requestedPowerKw":60}`), wantStatus: http.StatusOK},
-		{method: http.MethodDelete, path: "/api/v1/sessions/session-1", wantStatus: http.StatusOK},
+		{method: http.MethodPatch, path: "/api/v1/connectors/connector-1", body: []byte(`{"status":"unavailable"}`), wantStatus: http.StatusOK},
+		{method: http.MethodPatch, path: "/api/v1/connectors/connector-1", body: []byte(`{"status":"available"}`), wantStatus: http.StatusOK},
+		{method: http.MethodPost, path: "/api/v1/sessions", body: []byte(`{"id":"session-3","connectorId":"connector-1","requestedPowerKw":100,"vehicleMaxPowerKw":100}`), wantStatus: http.StatusCreated},
+		{method: http.MethodDelete, path: "/api/v1/sessions/session-3", wantStatus: http.StatusOK},
+		{method: http.MethodPost, path: "/api/v1/sessions", body: []byte(`{"id":"session-4","connectorId":"connector-1","requestedPowerKw":100,"vehicleMaxPowerKw":100}`), wantStatus: http.StatusCreated},
+		{method: http.MethodPatch, path: "/api/v1/chargers/charger-1", body: []byte(`{"status":"unavailable"}`), wantStatus: http.StatusOK},
+		{method: http.MethodPatch, path: "/api/v1/chargers/charger-1", body: []byte(`{"status":"available"}`), wantStatus: http.StatusOK},
+		{method: http.MethodGet, path: "/api/v1/station", wantStatus: http.StatusOK},
 	}
 
 	b.ReportAllocs()

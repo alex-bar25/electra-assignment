@@ -311,12 +311,62 @@ git commit -m "feat: expose hardware availability API"
 
 ---
 
-### Task 7: Full verification and real application flow
+### Task 7: Acceptance coverage and full verification
 
 **Files:**
-- No production changes expected.
+- Modify: `internal/api/latency_test.go`
+- Modify: `examples/scenarios.json`
+- Modify: `examples/run_scenarios.py`
+- Modify: `TEST_SCENARIOS.md`
+- Modify: `docs/superpowers/plans/2026-07-21-core-polish-availability.md` (mark Task 7 complete)
 
-- [ ] **Step 1: Run all static and automated verification**
+**Interfaces:**
+- Keeps: `BenchmarkSessionLifecycle` as the documented full synchronous HTTP-flow benchmark.
+- Extends: the runnable Docker scenario through connector and charger availability events.
+- Produces: explicit evidence of session termination, immediate redistribution, OPS visibility, and restored-hardware reuse.
+
+- [x] **Step 1: Expand the lifecycle benchmark across the complete successful API surface**
+
+Keep one explicit request table. In a fresh handler per iteration, exercise health, station configuration/query, session start/update/stop, connector unavailable/available, and charger unavailable/available. Every request must assert its expected HTTP status. Do not add error cases to the benchmark; focused handler tests already cover them.
+
+The benchmark reports the duration of the entire request sequence, not an individual request. Keep the documented threshold comparison against `1,000,000,000 ns/op`, which is therefore stricter than the brief's per-event requirement.
+
+- [x] **Step 2: Extend the structured example data**
+
+Add two explicit replacement sessions on `connector-1` to `examples/scenarios.json`. They allow the runner to demonstrate that a restored connector accepts a new session, preserve stop-redistribution coverage, and seed another active session before the charger outage without reusing a stopped session ID.
+
+- [x] **Step 3: Extend the Python runner through both availability endpoints**
+
+After the existing demand-update flow:
+
+1. `PATCH /api/v1/connectors/connector-1` to `unavailable`.
+2. Assert the affected session is absent, `session-2` immediately receives `300 kW`, and OPS reports the connector as unavailable and unoccupied.
+3. Restore the connector to `available`, assert its OPS status, and start a replacement session on it.
+4. Stop that replacement session and assert `session-2` immediately returns to `300 kW`.
+5. Start the second replacement session on `connector-1`.
+6. `PATCH /api/v1/chargers/charger-1` to `unavailable`.
+7. Assert the affected session is absent, `session-2` immediately receives `300 kW`, and OPS reports the charger as unavailable at `0 kW`.
+8. Restore the charger to `available` and assert the final OPS state.
+
+Keep the runner explicit and standard-library-only. Do not turn it into a generic scenario language or duplicate invalid-request coverage already present in Go tests.
+
+- [x] **Step 4: Update the scenario documentation**
+
+Update scenario 10 and its coverage-matrix row to name the allocator, service, HTTP, and Docker coverage now present. Update scenario 13 to state exactly which successful routes the benchmark exercises and that `ns/op` represents the complete flow.
+
+- [x] **Step 5: Exercise the benchmark and packaged example**
+
+Run:
+
+```bash
+go test ./internal/api -run '^$' -bench BenchmarkSessionLifecycle -benchtime=100x
+docker compose up --build -d
+python3 examples/run_scenarios.py
+```
+
+Expected: the benchmark remains comfortably below `1,000,000,000 ns/op`, and the runner prints PASS lines for lifecycle, connector outage/restoration, charger outage/restoration, redistribution, and final OPS state.
+
+- [x] **Step 6: Run all static and automated verification**
 
 ```bash
 gofmt -l .
@@ -326,16 +376,11 @@ go vet ./...
 go build ./...
 ```
 
-- [ ] **Step 2: Run the latency benchmark**
-
-```bash
-go test ./internal/api -run '^$' -bench BenchmarkSessionLifecycle -benchtime=100x
-```
-
-- [ ] **Step 3: Run the example against the packaged or local server**
-
-Confirm configuration, sharing, update, stop, and final OPS state through real HTTP requests.
-
-- [ ] **Step 4: Review repository state**
+- [x] **Step 7: Review repository state and commit the checkpoint**
 
 Run `git status --short` and `git diff --check`. Preserve unrelated user changes and report any untracked files accurately.
+
+```bash
+git add internal/api/latency_test.go examples/scenarios.json examples/run_scenarios.py TEST_SCENARIOS.md docs/superpowers/plans/2026-07-21-core-polish-availability.md
+git commit -m "test: exercise availability scenarios"
+```

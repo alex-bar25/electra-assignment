@@ -46,6 +46,14 @@ def sessions_by_id(state):
     return {session["id"]: session for session in state["sessions"]}
 
 
+def chargers_by_id(state):
+    return {charger["id"]: charger for charger in state["chargers"]}
+
+
+def connectors_by_id(charger):
+    return {connector["id"]: connector for connector in charger["connectors"]}
+
+
 def require_power(session, expected_power_kw):
     actual_power_kw = session["assignedPowerKw"]
     if abs(actual_power_kw - expected_power_kw) > 1e-6:
@@ -61,6 +69,8 @@ def main():
     station = scenario["station"]
     first = scenario["sessions"]["first"]
     second = scenario["sessions"]["second"]
+    after_connector_restore = scenario["sessions"]["afterConnectorRestore"]
+    before_charger_outage = scenario["sessions"]["beforeChargerOutage"]
     expected = scenario["expectedPowerKw"]
 
     health = request_json("GET", "/health", 200)
@@ -113,16 +123,85 @@ def main():
     require_power(sessions[second["id"]], expected["shared"])
     print("PASS restored demand returns to fair sharing")
 
-    state = request_json("DELETE", f"/api/v1/sessions/{first['id']}", 200)
+    state = request_json(
+        "PATCH",
+        f"/api/v1/connectors/{first['connectorId']}",
+        200,
+        {"status": "unavailable"},
+    )
+    sessions = sessions_by_id(state)
+    if set(sessions) != {second["id"]}:
+        raise RuntimeError(f"unexpected sessions after connector outage: {sorted(sessions)}")
+    require_power(sessions[second["id"]], expected["afterOutageSecond"])
+    connector = connectors_by_id(chargers_by_id(state)["charger-1"])[
+        first["connectorId"]
+    ]
+    if connector["status"] != "unavailable" or connector["occupied"]:
+        raise RuntimeError(f"unexpected unavailable connector state: {connector}")
+    print("PASS connector outage ends its session and redistributes power")
+
+    state = request_json(
+        "PATCH",
+        f"/api/v1/connectors/{first['connectorId']}",
+        200,
+        {"status": "available"},
+    )
+    connector = connectors_by_id(chargers_by_id(state)["charger-1"])[
+        first["connectorId"]
+    ]
+    if connector["status"] != "available":
+        raise RuntimeError(f"connector was not restored: {connector}")
+
+    started = request_json("POST", "/api/v1/sessions", 201, after_connector_restore)
+    require_power(started, expected["shared"])
+    state = request_json("GET", "/api/v1/station", 200)
+    sessions = sessions_by_id(state)
+    require_power(sessions[after_connector_restore["id"]], expected["shared"])
+    require_power(sessions[second["id"]], expected["shared"])
+    print("PASS restored connector accepts a new session")
+
+    state = request_json(
+        "DELETE", f"/api/v1/sessions/{after_connector_restore['id']}", 200
+    )
     sessions = sessions_by_id(state)
     if set(sessions) != {second["id"]}:
         raise RuntimeError(f"unexpected sessions after stop: {sorted(sessions)}")
     require_power(sessions[second["id"]], expected["afterStopSecond"])
     print("PASS session stop redistributes power immediately")
 
+    started = request_json("POST", "/api/v1/sessions", 201, before_charger_outage)
+    require_power(started, expected["shared"])
+
+    state = request_json(
+        "PATCH",
+        "/api/v1/chargers/charger-1",
+        200,
+        {"status": "unavailable"},
+    )
+    sessions = sessions_by_id(state)
+    if set(sessions) != {second["id"]}:
+        raise RuntimeError(f"unexpected sessions after charger outage: {sorted(sessions)}")
+    require_power(sessions[second["id"]], expected["afterOutageSecond"])
+    charger = chargers_by_id(state)["charger-1"]
+    if charger["status"] != "unavailable" or charger["currentPowerKw"] != 0:
+        raise RuntimeError(f"unexpected unavailable charger state: {charger}")
+    print("PASS charger outage ends attached sessions and redistributes power")
+
+    state = request_json(
+        "PATCH",
+        "/api/v1/chargers/charger-1",
+        200,
+        {"status": "available"},
+    )
+    if chargers_by_id(state)["charger-1"]["status"] != "available":
+        raise RuntimeError("charger was not restored")
+    print("PASS charger restored")
+
     state = request_json("GET", "/api/v1/station", 200)
     sessions = sessions_by_id(state)
-    require_power(sessions[second["id"]], expected["afterStopSecond"])
+    if set(sessions) != {second["id"]}:
+        raise RuntimeError(f"unexpected final sessions: {sorted(sessions)}")
+    require_power(sessions[second["id"]], expected["afterOutageSecond"])
     print("PASS final OPS state")
 
 
