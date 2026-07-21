@@ -4,6 +4,8 @@ The test strategy prioritizes the load-management behavior that the assignment e
 
 Each scenario below states why it was selected and the behavior it validates.
 
+The numeric setups are representative examples. A mapped Go test may use scaled values while asserting the same constraint, redistribution rule, state transition, or safety invariant; the coverage map identifies behavioral coverage rather than claiming every prose value is duplicated verbatim in one fixture.
+
 ## Test layers
 
 - `internal/allocation` tests the pure algorithm and physical invariants without HTTP or mutable state.
