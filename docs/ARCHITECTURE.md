@@ -93,7 +93,7 @@ One accepted mutation performs these operations under the lock:
 5. Update BESS dispatch and the station timestamp.
 6. Build the updated result before releasing the lock for lifecycle, availability, and simulation operations.
 
-Station configuration completes replacement and recomputation under the lock, then the handler obtains the response through the normal locked snapshot method.
+Station configuration completes replacement, recomputation, and snapshot construction under the same service lock. The handler then serializes the returned snapshot.
 
 Snapshots copy slices and pointer-backed values before returning them. A caller therefore cannot mutate stored configuration, charging-curve limits, or BESS state through a response object.
 
