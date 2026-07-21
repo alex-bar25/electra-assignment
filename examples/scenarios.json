@@ -43,6 +43,13 @@
       }
     ]
   },
+  "bess": {
+    "energyCapacityKwh": 200,
+    "socPercent": 50,
+    "maxChargePowerKw": 200,
+    "maxDischargePowerKw": 200,
+    "minSocPercent": 10
+  },
   "sessions": {
     "first": {
       "id": "session-1",
@@ -84,5 +91,14 @@
     "afterUpdateSecond": 300,
     "afterStopSecond": 300,
     "afterOutageSecond": 300
+  },
+  "bessExpected": {
+    "chargingWithoutSessionsKw": -200,
+    "chargingAfterFirstSessionKw": -100,
+    "boostedSessionKw": 300,
+    "dischargingKw": 200,
+    "socAfterFirstTickPercent": 25,
+    "minimumSocPercent": 10,
+    "sessionAtMinimumSocKw": 200
   }
 }

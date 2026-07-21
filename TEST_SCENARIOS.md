@@ -279,7 +279,7 @@ Run the representative lifecycle benchmark:
 go test ./internal/api -run '^$' -bench BenchmarkSessionLifecycle -benchtime=100x
 ```
 
-Each benchmark operation creates a fresh station service and exercises the complete successful HTTP flow through the real router: health, station configuration/query, session start/update/stop, connector outage/restoration, and charger outage/restoration.
+Each benchmark operation creates a fresh station service and exercises the complete successful HTTP flow through the real router: health, BESS station configuration/query, simulation tick, session start/update/stop, connector outage/restoration, and charger outage/restoration.
 
 **Expected result**
 
@@ -338,7 +338,7 @@ This validates that admission is not a one-time decision and that waiting sessio
 
 ## Optional Advanced Scenarios
 
-### 16. BESS boost and SoC floor
+### 16. BESS boost, spare-grid charging, and SoC floor
 
 **Setup**
 
@@ -348,12 +348,17 @@ This validates that admission is not a one-time decision and that waiting sessio
 - BESS minimum SoC: `10%`
 - BESS current SoC is above the minimum
 
+First observe the BESS with spare grid capacity, then add EV demand above the grid limit and advance the simulation clock explicitly.
+
 **Expected result**
 
 - The BESS contributes up to `100 kW`
 - EV allocation reaches `300 kW`
 - Grid import remains at or below `200 kW`
 - BESS discharge does not exceed its configured maximum
+- The BESS charges only from grid power left after EV allocations
+- Increasing EV demand reduces or stops BESS charging before any EV allocation is reduced
+- A simulation tick changes SoC by `power × elapsed time`, converted against battery capacity
 - BESS does not discharge below the minimum SoC
 
 Repeat the scenario when the BESS is already at its minimum SoC.
@@ -362,7 +367,7 @@ In that case, the BESS must not discharge and EV allocation remains constrained 
 
 **Why this scenario matters**
 
-This validates the primary value of the optional BESS feature while also enforcing its most important safety boundary.
+This validates the primary value of the optional BESS feature, EV-first charging priority, deterministic energy accounting, and the battery's most important safety boundary.
 
 ---
 
@@ -383,7 +388,7 @@ This validates the primary value of the optional BESS feature while also enforci
 | 12        | `TestServiceStartSessionRejectsInvalidOperations`, `TestServiceUpdateSessionRejectsInvalidOperationsAtomically`, `TestStartSessionMapsLifecycleErrors`                                                                                               | Docker runner is intentionally limited to the successful lifecycle                                |
 | 13        | `BenchmarkSessionLifecycle`                                                                                                                                                                                                                          | The packaged runner confirms the same successful mutation paths through real HTTP                 |
 | 14–15     | `TestAllocateWaitsWhenMinimumCannotBeReserved`, `TestServiceUpdateSessionReconsidersWaitingSessions`                                                                                                                                                 | Covered by focused Go/service tests                                                               |
-| 16        | Added only if BESS is implemented                                                                                                                                                                                                                    | Added only if BESS is implemented                                                                 |
+| 16        | `TestBESSDischargeBoostsStationSupply`, `TestBESSAtMinimumSocDoesNotDischarge`, `TestBESSChargesOnlyFromPowerLeftAfterEVs`, `TestAdvanceSimulationUpdatesBESSSocFromPowerFlow`, `TestAdvanceSimulationClampsBESSSocAndRecomputes`, `TestAdvanceSimulation` | Spare-grid charging, EV priority, battery boost, deterministic SoC ticks, and minimum-SoC fallback |
 
 The core allocation scenarios should primarily be implemented as fast, table-driven unit tests around the pure allocation engine.
 

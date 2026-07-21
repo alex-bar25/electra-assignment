@@ -62,6 +62,24 @@ def require_power(session, expected_power_kw):
         )
 
 
+def require_bess(state, expected_power_kw, expected_soc_percent, expected_mode):
+    bess = state.get("bess")
+    if bess is None:
+        raise RuntimeError("OPS state does not include the configured BESS")
+    if abs(bess["currentPowerKw"] - expected_power_kw) > 1e-6:
+        raise RuntimeError(
+            f"BESS power is {bess['currentPowerKw']} kW, expected {expected_power_kw} kW"
+        )
+    if abs(bess["socPercent"] - expected_soc_percent) > 1e-6:
+        raise RuntimeError(
+            f"BESS SoC is {bess['socPercent']}%, expected {expected_soc_percent}%"
+        )
+    if bess["mode"] != expected_mode:
+        raise RuntimeError(
+            f"BESS mode is {bess['mode']}, expected {expected_mode}"
+        )
+
+
 def main():
     with open(SCENARIO_PATH, encoding="utf-8") as scenario_file:
         scenario = json.load(scenario_file)
@@ -72,6 +90,8 @@ def main():
     after_connector_restore = scenario["sessions"]["afterConnectorRestore"]
     before_charger_outage = scenario["sessions"]["beforeChargerOutage"]
     expected = scenario["expectedPowerKw"]
+    bess = scenario["bess"]
+    bess_expected = scenario["bessExpected"]
 
     health = request_json("GET", "/health", 200)
     if health.get("status") != "ok":
@@ -203,6 +223,74 @@ def main():
         raise RuntimeError(f"unexpected final sessions: {sorted(sessions)}")
     require_power(sessions[second["id"]], expected["afterOutageSecond"])
     print("PASS final OPS state")
+
+    bess_station = {**station, "bess": bess}
+    state = request_json("PUT", "/api/v1/station/config", 200, bess_station)
+    require_bess(
+        state,
+        bess_expected["chargingWithoutSessionsKw"],
+        bess["socPercent"],
+        "charging",
+    )
+    if state["gridImportKw"] != 200:
+        raise RuntimeError(
+            f"grid import while charging BESS is {state['gridImportKw']} kW, expected 200 kW"
+        )
+    print("PASS spare grid capacity charges the BESS")
+
+    started = request_json("POST", "/api/v1/sessions", 201, first)
+    require_power(started, expected["firstAlone"])
+    state = request_json("GET", "/api/v1/station", 200)
+    require_bess(
+        state,
+        bess_expected["chargingAfterFirstSessionKw"],
+        bess["socPercent"],
+        "charging",
+    )
+    if state["gridImportKw"] != station["gridCapacityKw"]:
+        raise RuntimeError("BESS charging did not yield spare grid power to EV demand")
+    print("PASS EV demand takes priority over BESS charging")
+
+    started = request_json("POST", "/api/v1/sessions", 201, second)
+    require_power(started, bess_expected["boostedSessionKw"])
+    state = request_json("GET", "/api/v1/station", 200)
+    sessions = sessions_by_id(state)
+    require_power(sessions[first["id"]], bess_expected["boostedSessionKw"])
+    require_power(sessions[second["id"]], bess_expected["boostedSessionKw"])
+    require_bess(
+        state,
+        bess_expected["dischargingKw"],
+        bess["socPercent"],
+        "discharging",
+    )
+    if state["gridImportKw"] > station["gridCapacityKw"]:
+        raise RuntimeError("BESS boost caused grid import to exceed capacity")
+    print("PASS BESS boost supplies 200 kW above grid capacity")
+
+    state = request_json(
+        "POST", "/api/v1/simulation/tick", 200, {"elapsedSeconds": 15 * 60}
+    )
+    require_bess(
+        state,
+        bess_expected["dischargingKw"],
+        bess_expected["socAfterFirstTickPercent"],
+        "discharging",
+    )
+    print("PASS simulation tick updates BESS SoC deterministically")
+
+    state = request_json(
+        "POST", "/api/v1/simulation/tick", 200, {"elapsedSeconds": 15 * 60}
+    )
+    sessions = sessions_by_id(state)
+    require_bess(
+        state,
+        0,
+        bess_expected["minimumSocPercent"],
+        "idle",
+    )
+    require_power(sessions[first["id"]], bess_expected["sessionAtMinimumSocKw"])
+    require_power(sessions[second["id"]], bess_expected["sessionAtMinimumSocKw"])
+    print("PASS minimum SoC stops discharge and recomputes EV allocations")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "5eb63643-b2bc-4c89-9d74-3c9cf0499878",
     "name": "Electra Station Energy Management",
-    "description": "Start the API with `docker compose up --build`, import this collection into Postman, and run the complete collection in order. The collection configures a fresh station before exercising session lifecycle, fair allocation, hardware outages, recovery, and OPS state. `baseUrl` defaults to `http://localhost:8080`.",
+    "description": "Start the API with `docker compose up --build`, import this collection into Postman, and run the complete collection in order. The collection exercises session lifecycle, fair allocation, hardware outages, recovery, OPS state, BESS boost, spare-grid charging, and deterministic SoC updates. `baseUrl` defaults to `http://localhost:8080`.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -515,6 +515,230 @@
         "method": "GET",
         "header": [],
         "url": "{{baseUrl}}/api/v1/station"
+      }
+    },
+    {
+      "name": "17. Reconfigure station with BESS",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const state = pm.response.json();",
+              "pm.test(\"Spare grid capacity charges the BESS\", function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(state.sessions).to.have.length(0);",
+              "  pm.expect(state.bess.socPercent).to.eql(50);",
+              "  pm.expect(state.bess.currentPowerKw).to.eql(-200);",
+              "  pm.expect(state.bess.mode).to.eql(\"charging\");",
+              "  pm.expect(state.gridImportKw).to.eql(200);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"station-1\",\n  \"gridCapacityKw\": 400,\n  \"chargers\": [\n    {\n      \"id\": \"charger-1\",\n      \"maxPowerKw\": 300,\n      \"status\": \"available\",\n      \"connectors\": [\n        {\"id\": \"connector-1\", \"type\": \"CCS\", \"maxPowerKw\": 300, \"status\": \"available\"},\n        {\"id\": \"connector-2\", \"type\": \"CCS\", \"maxPowerKw\": 300, \"status\": \"available\"}\n      ]\n    },\n    {\n      \"id\": \"charger-2\",\n      \"maxPowerKw\": 300,\n      \"status\": \"available\",\n      \"connectors\": [\n        {\"id\": \"connector-3\", \"type\": \"CCS\", \"maxPowerKw\": 300, \"status\": \"available\"},\n        {\"id\": \"connector-4\", \"type\": \"CCS\", \"maxPowerKw\": 300, \"status\": \"available\"}\n      ]\n    }\n  ],\n  \"bess\": {\n    \"energyCapacityKwh\": 200,\n    \"socPercent\": 50,\n    \"maxChargePowerKw\": 200,\n    \"maxDischargePowerKw\": 200,\n    \"minSocPercent\": 10\n  }\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/station/config"
+      }
+    },
+    {
+      "name": "18. Start first BESS-phase session",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"EV receives full demand before battery charging\", function () {",
+              "  pm.response.to.have.status(201);",
+              "  pm.expect(pm.response.json().assignedPowerKw).to.eql(300);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"session-1\",\n  \"connectorId\": \"connector-1\",\n  \"requestedPowerKw\": 300,\n  \"vehicleMaxPowerKw\": 300\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/sessions"
+      }
+    },
+    {
+      "name": "19. Query EV-first BESS charging",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const state = pm.response.json();",
+              "pm.test(\"BESS charges only from power left after EV demand\", function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(state.sessions[0].assignedPowerKw).to.eql(300);",
+              "  pm.expect(state.bess.currentPowerKw).to.eql(-100);",
+              "  pm.expect(state.bess.mode).to.eql(\"charging\");",
+              "  pm.expect(state.gridImportKw).to.eql(400);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/v1/station"
+      }
+    },
+    {
+      "name": "20. Start second BESS-phase session",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Battery boost serves second session demand\", function () {",
+              "  pm.response.to.have.status(201);",
+              "  pm.expect(pm.response.json().assignedPowerKw).to.eql(300);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"session-2\",\n  \"connectorId\": \"connector-3\",\n  \"requestedPowerKw\": 300,\n  \"vehicleMaxPowerKw\": 300\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/sessions"
+      }
+    },
+    {
+      "name": "21. Query BESS boost",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const state = pm.response.json();",
+              "const sessions = Object.fromEntries(state.sessions.map((session) => [session.id, session]));",
+              "pm.test(\"BESS contributes 200 kW without exceeding grid capacity\", function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(sessions[\"session-1\"].assignedPowerKw).to.eql(300);",
+              "  pm.expect(sessions[\"session-2\"].assignedPowerKw).to.eql(300);",
+              "  pm.expect(state.bess.currentPowerKw).to.eql(200);",
+              "  pm.expect(state.bess.mode).to.eql(\"discharging\");",
+              "  pm.expect(state.gridImportKw).to.eql(400);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/v1/station"
+      }
+    },
+    {
+      "name": "22. Advance BESS by 15 minutes",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const state = pm.response.json();",
+              "pm.test(\"Tick updates SoC using power times elapsed time\", function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(state.bess.socPercent).to.eql(25);",
+              "  pm.expect(state.bess.currentPowerKw).to.eql(200);",
+              "  pm.expect(state.bess.mode).to.eql(\"discharging\");",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"elapsedSeconds\": 900\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/simulation/tick"
+      }
+    },
+    {
+      "name": "23. Advance BESS to minimum SoC",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const state = pm.response.json();",
+              "const sessions = Object.fromEntries(state.sessions.map((session) => [session.id, session]));",
+              "pm.test(\"Minimum SoC stops discharge and recomputes allocations\", function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(state.bess.socPercent).to.eql(10);",
+              "  pm.expect(state.bess.currentPowerKw).to.eql(0);",
+              "  pm.expect(state.bess.mode).to.eql(\"idle\");",
+              "  pm.expect(sessions[\"session-1\"].assignedPowerKw).to.eql(200);",
+              "  pm.expect(sessions[\"session-2\"].assignedPowerKw).to.eql(200);",
+              "  pm.expect(state.gridImportKw).to.eql(400);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"elapsedSeconds\": 900\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/simulation/tick"
       }
     }
   ]
