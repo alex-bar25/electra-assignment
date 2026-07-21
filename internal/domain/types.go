@@ -6,6 +6,8 @@ type OperationalStatus string
 
 type SessionStatus string
 
+type BESSMode string
+
 const DefaultMinimumPowerKw = 5.0
 
 const (
@@ -14,6 +16,10 @@ const (
 
 	SessionStatusCharging        SessionStatus = "charging"
 	SessionStatusWaitingForPower SessionStatus = "waiting_for_power"
+
+	BESSModeIdle        BESSMode = "idle"
+	BESSModeCharging    BESSMode = "charging"
+	BESSModeDischarging BESSMode = "discharging"
 )
 
 type StationConfig struct {
@@ -29,6 +35,16 @@ type BESSConfig struct {
 	MaxChargePowerKw    float64 `json:"maxChargePowerKw"`
 	MaxDischargePowerKw float64 `json:"maxDischargePowerKw"`
 	MinSocPercent       float64 `json:"minSocPercent"`
+}
+
+type BESSState struct {
+	EnergyCapacityKwh   float64  `json:"energyCapacityKwh"`
+	SocPercent          float64  `json:"socPercent"`
+	MaxChargePowerKw    float64  `json:"maxChargePowerKw"`
+	MaxDischargePowerKw float64  `json:"maxDischargePowerKw"`
+	MinSocPercent       float64  `json:"minSocPercent"`
+	CurrentPowerKw      float64  `json:"currentPowerKw"`
+	Mode                BESSMode `json:"mode"`
 }
 
 type ChargerConfig struct {

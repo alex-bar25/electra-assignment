@@ -8,14 +8,15 @@ import (
 )
 
 type StationState struct {
-	StationID               string           `json:"stationId"`
-	GridCapacityKw          float64          `json:"gridCapacityKw"`
-	GridImportKw            float64          `json:"gridImportKw"`
-	AvailableGridPowerKw    float64          `json:"availableGridPowerKw"`
-	AvailableStationPowerKw float64          `json:"availableStationPowerKw"`
-	Chargers                []ChargerState   `json:"chargers"`
-	Sessions                []domain.Session `json:"sessions"`
-	LastUpdatedAt           time.Time        `json:"lastUpdatedAt"`
+	StationID               string            `json:"stationId"`
+	GridCapacityKw          float64           `json:"gridCapacityKw"`
+	GridImportKw            float64           `json:"gridImportKw"`
+	AvailableGridPowerKw    float64           `json:"availableGridPowerKw"`
+	AvailableStationPowerKw float64           `json:"availableStationPowerKw"`
+	Chargers                []ChargerState    `json:"chargers"`
+	Sessions                []domain.Session  `json:"sessions"`
+	BESS                    *domain.BESSState `json:"bess,omitempty"`
+	LastUpdatedAt           time.Time         `json:"lastUpdatedAt"`
 }
 
 type ChargerState struct {
@@ -46,19 +47,28 @@ func (service *Service) Snapshot() (StationState, error) {
 }
 
 func (service *Service) snapshotLocked() StationState {
-	sessions, gridImport := sessionsForSnapshot(service.sessions)
-	available := service.config.GridCapacityKw - gridImport
-	if available < 0 {
-		available = 0
+	sessions, evPowerKw := sessionsForSnapshot(service.sessions)
+	gridImportKw := evPowerKw
+	if service.bess != nil {
+		gridImportKw -= service.bess.CurrentPowerKw
+	}
+	availableGridPowerKw := service.config.GridCapacityKw - gridImportKw
+	if availableGridPowerKw < 0 {
+		availableGridPowerKw = 0
+	}
+	availableStationPowerKw := service.availableStationSupplyLocked() - evPowerKw
+	if availableStationPowerKw < 0 {
+		availableStationPowerKw = 0
 	}
 	return StationState{
 		StationID:               service.config.ID,
 		GridCapacityKw:          service.config.GridCapacityKw,
-		GridImportKw:            gridImport,
-		AvailableGridPowerKw:    available,
-		AvailableStationPowerKw: available,
+		GridImportKw:            gridImportKw,
+		AvailableGridPowerKw:    availableGridPowerKw,
+		AvailableStationPowerKw: availableStationPowerKw,
 		Chargers:                chargerStates(*service.config, sessions),
 		Sessions:                sessions,
+		BESS:                    cloneBESSState(service.bess),
 		LastUpdatedAt:           service.lastUpdatedAt,
 	}
 }
@@ -112,9 +122,9 @@ func sessionsForSnapshot(stored map[string]domain.Session) ([]domain.Session, fl
 		return sessions[i].ID < sessions[j].ID
 	})
 
-	gridImport := 0.0
+	assignedPowerKw := 0.0
 	for _, session := range sessions {
-		gridImport += session.AssignedPowerKw
+		assignedPowerKw += session.AssignedPowerKw
 	}
-	return sessions, gridImport
+	return sessions, assignedPowerKw
 }

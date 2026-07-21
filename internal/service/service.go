@@ -23,6 +23,7 @@ type Service struct {
 	mu            sync.Mutex
 	config        *domain.StationConfig
 	sessions      map[string]domain.Session
+	bess          *domain.BESSState
 	lastUpdatedAt time.Time
 }
 
@@ -40,7 +41,8 @@ func (service *Service) Configure(config domain.StationConfig) error {
 	defer service.mu.Unlock()
 	service.config = &config
 	service.sessions = make(map[string]domain.Session)
-	service.lastUpdatedAt = time.Now().UTC()
+	service.bess = newBESSState(config.BESS)
+	service.recomputeLocked(time.Now().UTC())
 	return nil
 }
 

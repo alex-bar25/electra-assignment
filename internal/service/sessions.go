@@ -117,13 +117,16 @@ func (service *Service) recomputeLocked(now time.Time) {
 	for _, session := range service.sessions {
 		sessions = append(sessions, session)
 	}
-	for _, assignment := range allocation.Allocate(*service.config, sessions, service.config.GridCapacityKw) {
+	evPowerKw := 0.0
+	for _, assignment := range allocation.Allocate(*service.config, sessions, service.availableStationSupplyLocked()) {
 		session := service.sessions[assignment.SessionID]
 		session.EffectiveDemandKw = assignment.EffectiveDemandKw
 		session.AssignedPowerKw = assignment.AssignedPowerKw
 		session.Status = assignment.Status
 		service.sessions[assignment.SessionID] = session
+		evPowerKw += assignment.AssignedPowerKw
 	}
+	service.updateBESSDispatchLocked(evPowerKw)
 	service.lastUpdatedAt = now
 }
 
