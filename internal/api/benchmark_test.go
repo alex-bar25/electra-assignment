@@ -42,7 +42,7 @@ func BenchmarkSessionLifecycle(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		handler := New(service.New(), slog.New(slog.DiscardHandler))
 		for _, request := range requests {
 			response := httptest.NewRecorder()
