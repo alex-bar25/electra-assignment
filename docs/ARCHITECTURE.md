@@ -205,7 +205,7 @@ Handlers map expected service errors to conventional responses:
 Every error response uses:
 
 ```json
-{"code":"machine_readable_code","message":"human-readable explanation"}
+{ "code": "machine_readable_code", "message": "human-readable explanation" }
 ```
 
 The server uses `log/slog`: successful mutations are informational, expected rejections are warnings, and unexpected failures are errors. There is intentionally no hosted logging, tracing, metrics agent, or middleware stack.
@@ -218,15 +218,15 @@ Wall-clock timestamps record accepted lifecycle events, but allocation decisions
 
 ## Trade-offs and production evolution
 
-| Current decision | Benefit | Production evolution |
-| --- | --- | --- |
-| In-memory state | Simple and immediately runnable | Durable state, event replay, and recovery after restart |
-| One mutex | Clear atomicity | Measure first; partition state only if station-scale contention requires it |
-| One process | One obvious consistency boundary | Separate station agents or orchestration only when multi-station requirements exist |
-| REST events | Easy to inspect and demonstrate | Authenticated OCPP or hardware event integration |
-| Explicit BESS tick | Deterministic tests | Meter-driven elapsed time and continuous controller integration |
-| Basic `slog` output | No hosted dependency | Metrics, traces, alerting, and durable audit events |
-| Immediate session removal on outage | Clear live state | Separate session history and incident records |
+| Current decision                    | Benefit                          | Production evolution                                                                |
+| ----------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------- |
+| In-memory state                     | Simple and immediately runnable  | Durable state, event replay, and recovery after restart                             |
+| One mutex                           | Clear atomicity                  | Measure first; partition state only if station-scale contention requires it         |
+| One process                         | One obvious consistency boundary | Separate station agents or orchestration only when multi-station requirements exist |
+| REST events                         | Easy to inspect and demonstrate  | Authenticated OCPP or hardware event integration                                    |
+| Explicit BESS tick                  | Deterministic tests              | Meter-driven elapsed time and continuous controller integration                     |
+| Basic `slog` output                 | No hosted dependency             | Metrics, traces, alerting, and durable audit events                                 |
+| Immediate session removal on outage | Clear live state                 | Separate session history and incident records                                       |
 
 Other realistic follow-ups include graceful HTTP shutdown, configuration versioning, idempotency keys for retried hardware events, and deployment health/readiness policies. They are not partially implemented here.
 
