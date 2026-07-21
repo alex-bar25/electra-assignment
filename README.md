@@ -201,7 +201,7 @@ go test ./internal/api -run '^$' -bench BenchmarkSessionLifecycle -benchtime=100
 Run the packaged Docker demonstration:
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 python3 examples/run_scenarios.py
 ```
 

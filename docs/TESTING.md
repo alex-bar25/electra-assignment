@@ -1,8 +1,19 @@
-## Test Scenarios
+# Testing and Scenarios
 
-The following scenarios validate the core allocation behavior, physical constraints, event handling, determinism, and failure cases of the Station Energy Management System.
+The test strategy prioritizes the load-management behavior that the assignment evaluates: physical limits, fair allocation, redistribution, deterministic lifecycle changes, and optional BESS behavior. Packaging and malformed/concurrent-operation rigor are covered proportionately rather than expanded into an infrastructure test system.
 
-Each scenario includes why it was selected and the behavior it is expected to validate.
+Each scenario below states why it was selected and the behavior it validates.
+
+## Test layers
+
+- `internal/allocation` tests the pure algorithm and physical invariants without HTTP or mutable state.
+- `internal/service` tests lifecycle orchestration, atomic validation, synchronous recomputation, availability, BESS dispatch, and SoC accounting.
+- `internal/api` tests JSON contracts, routing, status-code mapping, and the real HTTP lifecycle benchmark.
+- `examples/run_scenarios.py` and the Postman collection demonstrate a successful reviewer flow against the packaged API.
+
+Focused Go tests are the source of correctness. The Python and Postman flows are intentionally readable demonstrations, not replacements for unit and service tests.
+
+## Scenario catalogue
 
 ### 1. Single session receives its full effective demand
 
@@ -373,28 +384,91 @@ This validates the primary value of the optional BESS feature, EV-first charging
 
 ## Execution Strategy
 
+### Go verification
+
+Run the complete test suite:
+
+```bash
+go test ./...
+```
+
+Run the race detector across the same packages:
+
+```bash
+go test -race ./...
+```
+
+Run static analysis and confirm every package builds:
+
+```bash
+go vet ./...
+go build ./...
+```
+
+The core business packages have focused coverage for their important branches. Coverage percentage is treated as supporting evidence rather than a target; scenario quality and direct invariant assertions matter more than maximizing a number.
+
+### Lifecycle benchmark
+
+Run the complete successful HTTP sequence 100 times:
+
+```bash
+go test ./internal/api -run '^$' -bench BenchmarkSessionLifecycle -benchtime=100x
+```
+
+One benchmark operation creates a fresh service and exercises health, BESS configuration and tick, station query, session start/update/stop, connector outage/restoration, and charger outage/restoration through the real router.
+
+The brief requires accepted events to react within one second. A representative Apple M4 Pro run completes this entire multi-request sequence in roughly `0.1 ms/op`. The exact value is environment-dependent; the meaningful threshold is `1,000,000,000 ns/op`, and the local command is the authoritative measurement for a reviewer's machine.
+
+### Docker and Python scenario
+
+Build and start the same container a reviewer will run:
+
+```bash
+docker compose up --build -d
+```
+
+Run the packaged scenario:
+
+```bash
+python3 examples/run_scenarios.py
+```
+
+The runner uses only Python's standard library and defaults to `http://localhost:8080`. Set `BASE_URL` to target another local port:
+
+```bash
+BASE_URL=http://localhost:9090 python3 examples/run_scenarios.py
+```
+
+It configures a grid-only station first, then demonstrates session sharing, updates, outages, recovery, and stop redistribution. It reconfigures the same station with a BESS and demonstrates spare-grid charging, EV priority, battery boost, deterministic SoC change, and minimum-SoC fallback.
+
+### Postman collection
+
+Import [`../examples/electra-station.postman_collection.json`](../examples/electra-station.postman_collection.json) into Postman after starting the Docker API.
+
+The collection variable `baseUrl` defaults to `http://localhost:8080`. Run the complete collection in order because later requests intentionally build on state created by earlier requests. The 23 requests cover the same successful grid-only and BESS phases as the Python runner and contain response assertions in Postman test scripts.
+
 ### Automated coverage map
 
-| Scenarios | Primary Go coverage                                                                                                                                                                                                                                  | Runnable Docker coverage                                                                          |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| 1–2       | `TestAllocateRespectsEffectiveDemandLimits`                                                                                                                                                                                                          | Basic first-session allocation only                                                               |
-| 3–4       | `TestAllocateSharesAndRedistributesGridPower`                                                                                                                                                                                                        | Fair sharing and update redistribution                                                            |
-| 5         | `TestAllocateRedistributesAcrossThreeDemandLevels`                                                                                                                                                                                                   | Covered by focused Go test                                                                        |
-| 6         | `TestAllocateRespectsSharedChargerLimit`                                                                                                                                                                                                             | Covered by focused Go test                                                                        |
-| 7         | `TestAllocateRedistributesPastFullCharger`                                                                                                                                                                                                           | Covered by focused Go test                                                                        |
-| 8–9       | `TestServiceStopSessionRecomputesBeforeReturning`, `TestServiceChargingCurveUpdateRecomputesBeforeReturning`                                                                                                                                         | Update and stop redistribution                                                                    |
-| 10        | `TestAllocateReturnsZeroForUnavailableHardware`, `TestUpdateConnectorStatusEndsSessionAndRedistributesPower`, `TestUpdateChargerStatusEndsAttachedSessionsAndRedistributesPower`, `TestUpdateConnectorAvailability`, `TestUpdateChargerAvailability` | Connector and charger outage/restoration, session termination, redistribution, and OPS visibility |
-| 11        | `TestAllocateProducesStableOutput`                                                                                                                                                                                                                   | Covered by focused Go test                                                                        |
-| 12        | `TestServiceStartSessionRejectsInvalidOperations`, `TestServiceUpdateSessionRejectsInvalidOperationsAtomically`, `TestStartSessionMapsLifecycleErrors`                                                                                               | Docker runner is intentionally limited to the successful lifecycle                                |
-| 13        | `BenchmarkSessionLifecycle`                                                                                                                                                                                                                          | The packaged runner confirms the same successful mutation paths through real HTTP                 |
-| 14–15     | `TestAllocateWaitsWhenMinimumCannotBeReserved`, `TestServiceUpdateSessionReconsidersWaitingSessions`                                                                                                                                                 | Covered by focused Go/service tests                                                               |
+| Scenarios | Primary Go coverage                                                                                                                                                                                                                                        | Runnable Docker coverage                                                                           |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| 1–2       | `TestAllocateRespectsEffectiveDemandLimits`                                                                                                                                                                                                                | Basic first-session allocation only                                                                |
+| 3–4       | `TestAllocateSharesAndRedistributesGridPower`                                                                                                                                                                                                              | Fair sharing and update redistribution                                                             |
+| 5         | `TestAllocateRedistributesAcrossThreeDemandLevels`                                                                                                                                                                                                         | Covered by focused Go test                                                                         |
+| 6         | `TestAllocateRespectsSharedChargerLimit`                                                                                                                                                                                                                   | Covered by focused Go test                                                                         |
+| 7         | `TestAllocateRedistributesPastFullCharger`                                                                                                                                                                                                                 | Covered by focused Go test                                                                         |
+| 8–9       | `TestServiceStopSessionRecomputesBeforeReturning`, `TestServiceChargingCurveUpdateRecomputesBeforeReturning`                                                                                                                                               | Update and stop redistribution                                                                     |
+| 10        | `TestAllocateReturnsZeroForUnavailableHardware`, `TestUpdateConnectorStatusEndsSessionAndRedistributesPower`, `TestUpdateChargerStatusEndsAttachedSessionsAndRedistributesPower`, `TestUpdateConnectorAvailability`, `TestUpdateChargerAvailability`       | Connector and charger outage/restoration, session termination, redistribution, and OPS visibility  |
+| 11        | `TestAllocateProducesStableOutput`                                                                                                                                                                                                                         | Covered by focused Go test                                                                         |
+| 12        | `TestServiceStartSessionRejectsInvalidOperations`, `TestServiceUpdateSessionRejectsInvalidOperationsAtomically`, `TestStartSessionMapsLifecycleErrors`                                                                                                     | Docker runner is intentionally limited to the successful lifecycle                                 |
+| 13        | `BenchmarkSessionLifecycle`                                                                                                                                                                                                                                | The packaged runner confirms the same successful mutation paths through real HTTP                  |
+| 14–15     | `TestAllocateWaitsWhenMinimumCannotBeReserved`, `TestServiceUpdateSessionReconsidersWaitingSessions`                                                                                                                                                       | Covered by focused Go/service tests                                                                |
 | 16        | `TestBESSDischargeBoostsStationSupply`, `TestBESSAtMinimumSocDoesNotDischarge`, `TestBESSChargesOnlyFromPowerLeftAfterEVs`, `TestAdvanceSimulationUpdatesBESSSocFromPowerFlow`, `TestAdvanceSimulationClampsBESSSocAndRecomputes`, `TestAdvanceSimulation` | Spare-grid charging, EV priority, battery boost, deterministic SoC ticks, and minimum-SoC fallback |
 
-The core allocation scenarios should primarily be implemented as fast, table-driven unit tests around the pure allocation engine.
+The core allocation scenarios are implemented as fast unit tests around the pure allocation engine.
 
-Lifecycle, validation, availability, and response semantics should be covered through service-layer or HTTP integration tests.
+Lifecycle, validation, availability, and response semantics are covered through service-layer or HTTP tests.
 
-At least one runnable end-to-end scenario should demonstrate:
+The runnable Docker scenario demonstrates:
 
 1. Configuring the station
 2. Starting one session
@@ -405,6 +479,4 @@ At least one runnable end-to-end scenario should demonstrate:
 7. Stopping one session
 8. Querying the final station state
 
-The runnable scenario can use `curl`, a shell script, or structured sample inputs.
-
-Every test description should state the behavior, edge case, or invariant it validates.
+The runner continues through availability recovery and the complete BESS flow after this core sequence. Invalid operations remain focused Go/API tests so the reviewer demonstration stays concise and readable.
