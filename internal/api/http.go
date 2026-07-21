@@ -31,6 +31,19 @@ func (api handler) writeError(response http.ResponseWriter, status int, code, me
 	api.writeJSON(response, status, errorResponse{Code: code, Message: message})
 }
 
+func (api handler) methodNotAllowed(allow string) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		api.logger.Warn("method not allowed", "method", request.Method, "path", request.URL.Path)
+		response.Header().Set("Allow", allow)
+		api.writeError(response, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+	}
+}
+
+func (api handler) notFound(response http.ResponseWriter, request *http.Request) {
+	api.logger.Warn("route not found", "method", request.Method, "path", request.URL.Path)
+	api.writeError(response, http.StatusNotFound, "not_found", "route not found")
+}
+
 func (api handler) writeJSON(response http.ResponseWriter, status int, body any) {
 	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(status)

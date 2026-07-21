@@ -21,5 +21,11 @@ func New(station *service.Service, logger *slog.Logger) http.Handler {
 	mux.HandleFunc("POST /api/v1/sessions", api.startSession)
 	mux.HandleFunc("PATCH /api/v1/sessions/{sessionId}", api.updateSession)
 	mux.HandleFunc("DELETE /api/v1/sessions/{sessionId}", api.stopSession)
+	mux.HandleFunc("/health", api.methodNotAllowed(http.MethodGet))
+	mux.HandleFunc("/api/v1/station/config", api.methodNotAllowed(http.MethodPut))
+	mux.HandleFunc("/api/v1/station", api.methodNotAllowed(http.MethodGet))
+	mux.HandleFunc("/api/v1/sessions", api.methodNotAllowed(http.MethodPost))
+	mux.HandleFunc("/api/v1/sessions/{sessionId}", api.methodNotAllowed("PATCH, DELETE"))
+	mux.HandleFunc("/", api.notFound)
 	return mux
 }
