@@ -194,16 +194,19 @@ This validates synchronous recomputation and the requirement to react immediatel
 - Session A and Session B initially receive `150 kW` each
 - Session A’s charging-curve limit changes to `80 kW`
 
+In a focused API case, start a `100 kW` session capped by a `20 kW` charging-curve limit, then clear that limit with JSON `null`.
+
 **Expected result**
 
 - Session A receives `80 kW`
 - Session B receives up to `220 kW`, subject to its own limits
+- The focused session's curve limit becomes absent and its effective demand and allocation return to `100 kW`
 
 **Why this scenario matters**
 
-Vehicle power demand changes throughout a charging session.
+Vehicle power demand changes throughout a charging session, and an optional curve limit must be removable when it no longer applies.
 
-This validates dynamic session updates and confirms that newly available power is immediately redistributed rather than remaining unused.
+This validates dynamic session updates, immediate redistribution, and that explicit `null` clears an optional limit rather than being rejected as an empty update.
 
 ---
 
@@ -282,7 +285,27 @@ This scenario verifies that malformed or conflicting events cannot leave the sta
 
 ---
 
-### 13. Synchronous HTTP lifecycle remains responsive
+### 13. Concurrent configuration responses remain request-consistent
+
+**Setup**
+
+Send `1,000` valid station-configuration requests concurrently, each with a distinct station ID.
+
+**Expected result**
+
+- Every response contains the station ID submitted by that request
+- Configuration replacement and response construction remain race-free
+- A later request may replace stored state, but it cannot change an earlier request's response
+
+**Why this scenario matters**
+
+A successful state-changing response should describe the mutation performed by that request, even when another mutation arrives immediately afterward.
+
+This validates that configuration and its returned snapshot form one atomic service operation rather than two separately locked calls.
+
+---
+
+### 14. Synchronous HTTP lifecycle remains responsive
 
 **Setup**
 
@@ -308,7 +331,7 @@ This is a lightweight regression check for the deliberately short in-memory reac
 
 These scenarios cover the minimum-power behavior implemented after the core grid-only allocator.
 
-### 14. Minimum-power admission and waiting behavior
+### 15. Minimum-power admission and waiting behavior
 
 **Setup**
 
@@ -332,7 +355,7 @@ This validates the minimum-threshold policy chosen for this submission.
 
 ---
 
-### 15. Waiting session is reconsidered when capacity becomes available
+### 16. Waiting session is reconsidered when capacity becomes available
 
 **Setup**
 
@@ -352,7 +375,7 @@ This validates that admission is not a one-time decision and that waiting sessio
 
 ## Optional Advanced Scenarios
 
-### 16. BESS boost, spare-grid charging, and SoC floor
+### 17. BESS boost, spare-grid charging, and SoC floor
 
 **Setup**
 
@@ -454,13 +477,14 @@ The collection variable `baseUrl` defaults to `http://localhost:8080`. Run the c
 | 5         | `TestAllocateRedistributesAcrossThreeDemandLevels`                                                                                                                                                                                                         | Covered by focused Go test                                                                         |
 | 6         | `TestAllocateRespectsSharedChargerLimit`                                                                                                                                                                                                                   | Covered by focused Go test                                                                         |
 | 7         | `TestAllocateRedistributesPastFullCharger`                                                                                                                                                                                                                 | Covered by focused Go test                                                                         |
-| 8–9       | `TestServiceStopSessionRecomputesBeforeReturning`, `TestServiceChargingCurveUpdateRecomputesBeforeReturning`                                                                                                                                               | Update and stop redistribution                                                                     |
+| 8–9       | `TestServiceStopSessionRecomputesBeforeReturning`, `TestServiceChargingCurveUpdateRecomputesBeforeReturning`, `TestUpdateSessionClearsChargingCurveLimit`                                                                                                   | Update and stop redistribution                                                                     |
 | 10        | `TestAllocateReturnsZeroForUnavailableHardware`, `TestUpdateConnectorStatusEndsSessionAndRedistributesPower`, `TestUpdateChargerStatusEndsAttachedSessionsAndRedistributesPower`, `TestUpdateConnectorAvailability`, `TestUpdateChargerAvailability`       | Connector and charger outage/restoration, session termination, redistribution, and OPS visibility  |
-| 11        | `TestAllocateProducesStableOutput`                                                                                                                                                                                                                         | Covered by focused Go test                                                                         |
+| 11        | `TestAllocateProducesStableOutput`, `TestSessionsForSnapshotUsesStableSummationOrder`                                                                                                                                                                      | Covered by focused Go/service tests                                                                |
 | 12        | `TestServiceStartSessionRejectsInvalidOperations`, `TestServiceUpdateSessionRejectsInvalidOperationsAtomically`, `TestStartSessionMapsLifecycleErrors`                                                                                                     | Docker runner is intentionally limited to the successful lifecycle                                 |
-| 13        | `BenchmarkSessionLifecycle`                                                                                                                                                                                                                                | The packaged runner confirms the same successful mutation paths through real HTTP                  |
-| 14–15     | `TestAllocateWaitsWhenMinimumCannotBeReserved`, `TestServiceUpdateSessionReconsidersWaitingSessions`                                                                                                                                                       | Covered by focused Go/service tests                                                                |
-| 16        | `TestBESSDischargeBoostsStationSupply`, `TestBESSAtMinimumSocDoesNotDischarge`, `TestBESSChargesOnlyFromPowerLeftAfterEVs`, `TestAdvanceSimulationUpdatesBESSSocFromPowerFlow`, `TestAdvanceSimulationClampsBESSSocAndRecomputes`, `TestAdvanceSimulation` | Spare-grid charging, EV priority, battery boost, deterministic SoC ticks, and minimum-SoC fallback |
+| 13        | `TestConcurrentConfigureReturnsOwnState`                                                                                                                                                                                                                   | Covered by focused HTTP test                                                                        |
+| 14        | `BenchmarkSessionLifecycle`                                                                                                                                                                                                                                | The packaged runner confirms the same successful mutation paths through real HTTP                  |
+| 15–16     | `TestAllocateWaitsWhenMinimumCannotBeReserved`, `TestServiceUpdateSessionReconsidersWaitingSessions`                                                                                                                                                       | Covered by focused Go/service tests                                                                |
+| 17        | `TestBESSDischargeBoostsStationSupply`, `TestBESSAtMinimumSocDoesNotDischarge`, `TestBESSChargesOnlyFromPowerLeftAfterEVs`, `TestAdvanceSimulationUpdatesBESSSocFromPowerFlow`, `TestAdvanceSimulationClampsBESSSocAndRecomputes`, `TestAdvanceSimulation` | Spare-grid charging, EV priority, battery boost, deterministic SoC ticks, and minimum-SoC fallback |
 
 The core allocation scenarios are implemented as fast unit tests around the pure allocation engine.
 
