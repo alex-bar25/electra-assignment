@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the existing standard-library HTTP API and single mutex-protected service. Routing fallbacks remain transport-only, availability mutation remains service-owned, and Docker/examples only package the already-runnable server.
 
-**Tech Stack:** Go 1.26, `net/http`, `log/slog`, Go tests/benchmarks, Docker Compose, POSIX shell and curl.
+**Tech Stack:** Go 1.26, `net/http`, `log/slog`, Go tests/benchmarks, Docker Compose, and Python 3 standard library for runnable acceptance scenarios.
 
 ## Global Constraints
 
@@ -157,23 +157,23 @@ git commit -m "build: add Docker packaging"
 
 ---
 
-### Task 4: Runnable HTTP examples
+### Task 4: Runnable HTTP acceptance scenarios
 
 **Files:**
-- Create: `examples/station.json`
-- Create: `examples/scenarios.sh`
+- Create: `examples/scenarios.json`
+- Create: `examples/run_scenarios.py`
 
 **Interfaces:**
 - Consumes: API at `BASE_URL`, default `http://localhost:8080`.
-- Produces: reviewer-friendly configure/start/share/update/stop/query flow.
+- Produces: reviewer-friendly configure/start/share/update/stop/query flow with explicit assertions.
 
-- [ ] **Step 1: Add the sample station**
+- [ ] **Step 1: Add scenario data**
 
-Use the brief's representative station: `400 kW` grid, two `300 kW` available chargers, and two `CCS` connectors per charger.
+Create `scenarios.json` containing the brief's representative station (`400 kW` grid, two `300 kW` available chargers, and two `CCS` connectors per charger) plus the session start and update payloads used by the acceptance flow.
 
-- [ ] **Step 2: Add the scenario script**
+- [ ] **Step 2: Add the Python runner**
 
-Use POSIX `sh`, `set -eu`, and `curl -fsS`. Demonstrate:
+Use only Python 3's standard `json`, `os`, `sys`, and `urllib` modules. Keep the request sequence and assertions explicit rather than creating a generic JSON assertion language. Demonstrate and assert:
 
 1. Station configuration.
 2. First session start.
@@ -183,17 +183,17 @@ Use POSIX `sh`, `set -eu`, and `curl -fsS`. Demonstrate:
 6. Session stop and redistribution.
 7. Final station query.
 
-Support `BASE_URL` without adding another dependency or JSON pretty-printer.
+Support `BASE_URL`, defaulting to `http://localhost:8080`. Print one concise PASS line per step and exit non-zero with an actionable failure message.
 
-- [ ] **Step 3: Exercise the script**
+- [ ] **Step 3: Exercise the runner**
 
-Start `go run ./cmd/server`, run `./examples/scenarios.sh`, and confirm every curl request succeeds. Stop the temporary process afterward.
+Start `go run ./cmd/server`, run `python3 examples/run_scenarios.py`, and confirm all HTTP status and allocation assertions pass. Stop the temporary process afterward.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add examples/station.json examples/scenarios.sh
-git commit -m "docs: add runnable API scenario"
+git add examples/scenarios.json examples/run_scenarios.py
+git commit -m "test: add runnable API scenarios"
 ```
 
 ---
