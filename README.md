@@ -2,6 +2,8 @@
 
 A small Go service that manages power for one EV charging station. It accepts station configuration and charging-session events, allocates power deterministically under physical constraints, reacts synchronously to state changes, and exposes the live station state through a REST API.
 
+The station topology is entirely configuration-driven: charger count, connectors, their power limits and availability, grid capacity, and optional BESS settings come from the station configuration rather than being hardcoded.
+
 The implementation deliberately favors correctness, explainability, and reviewer usability over production infrastructure.
 
 ## What it does
@@ -9,7 +11,7 @@ The implementation deliberately favors correctness, explainability, and reviewer
 - Shares constrained power fairly across concurrent sessions.
 - Respects grid, charger, connector, vehicle, and charging-curve limits.
 - Redistributes unused power when demand or station state changes.
-- Starts, updates, and stops sessions synchronously.
+- Reacts to session connect/start, power-limit changes, and disconnect/stop events synchronously, recomputing allocations before the response returns.
 - Pauses sessions at `0 kW` when their useful minimum cannot be met.
 - Ends affected sessions when a charger or connector becomes unavailable.
 - Optionally uses a BESS to boost EV supply or consume spare grid power.
@@ -124,7 +126,7 @@ min(requested power, vehicle maximum, optional curve limit, connector maximum)
 
 The allocator then applies station supply and shared charger limits. When demand exceeds supply, it uses deterministic max-min fairness: raise the lowest allocations together, stop sessions at their effective demand or physical constraint, and redistribute any unused share.
 
-Ordinary allocation treats sessions equally. Stable identifier sorting prevents Go map iteration order from affecting results.
+Ordinary allocation treats sessions equally. Stable identifier sorting prevents Go map iteration order from affecting results, so equivalent inputs always produce the same allocation output.
 
 See [Allocation and Power Policy](docs/ALLOCATION.md) for the algorithm, invariants, and worked examples.
 
@@ -135,12 +137,13 @@ An omitted or zero minimum defaults to `5 kW`. This is the documented assumption
 If every session's minimum cannot be served:
 
 1. Sessions are considered by start time, then session ID.
-2. Admitted sessions reserve their minimum.
-3. Non-admitted sessions remain active with `waiting_for_power` and receive exactly `0 kW`.
-4. Max-min sharing runs across admitted sessions.
-5. Every accepted state change reconsiders waiting sessions.
+2. The session-start request is still accepted and the session is stored as active.
+3. Sessions admitted to charging reserve their minimum.
+4. Sessions not admitted to charging remain active with `waiting_for_power` and receive exactly `0 kW`.
+5. Max-min sharing runs across sessions admitted to charging.
+6. Every accepted state change reconsiders waiting sessions.
 
-Start time is therefore an admission tie-breaker, not a priority tier during ordinary fair sharing.
+Here, admission means admission to the current power allocation, not rejection of session creation. Start time is therefore an admission tie-breaker, not a priority tier during ordinary fair sharing.
 
 ## Hardware availability
 
@@ -154,7 +157,7 @@ The BESS is optional. When configured:
 
 - It discharges only to cover EV demand above grid capacity.
 - Discharge never exceeds EV shortfall or maximum discharge power.
-- It cannot discharge at or below its configured minimum SoC.
+- It cannot discharge at or below its configured minimum SoC floor (`10%` in the supplied example).
 - It charges only from grid capacity left after EV demand is served.
 - EV allocations are never reduced merely to charge the BESS.
 - Charging stops at `100%` SoC.
@@ -178,6 +181,8 @@ The model assumes `100%` efficiency. Time advances only through `POST /api/v1/si
 One `sync.Mutex` protects configuration, sessions, BESS runtime state, and timestamps. A mutation and its allocation recomputation occur under the same lock, so readers cannot observe a partially applied station state.
 
 This favors simple consistency over parallel mutation throughput, which is appropriate for one station and a small in-memory calculation. The allocation engine itself remains pure and independently testable.
+
+Session connect/start, power-change, disconnect/stop, availability, and BESS tick requests all perform this recomputation inline. This is the implementation of the brief's real-time reaction requirement rather than an asynchronous or eventually consistent process.
 
 The lifecycle benchmark exercises the complete successful HTTP flow—including configuration, session lifecycle, availability events, OPS reads, and a BESS tick. A representative Apple M4 Pro run completed the entire sequence in roughly `0.1 ms/op`, comfortably below the brief's one-second reaction requirement. Exact numbers depend on hardware; run the benchmark locally rather than treating this measurement as a guarantee.
 

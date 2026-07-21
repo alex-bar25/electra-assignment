@@ -83,9 +83,11 @@ When the station cannot meet every useful minimum, admission is deterministic:
 
 1. Sort eligible sessions by start time.
 2. Break equal-start-time ties by session ID.
-3. Admit a session only if its minimum fits both remaining station supply and remaining charger capacity.
+3. Admit a session to charging only if its minimum fits both remaining station supply and remaining charger capacity.
 4. Reserve the admitted session's minimum.
-5. Keep a non-admitted session active with `waiting_for_power` and exactly `0 kW`.
+5. Keep a session that is not admitted to charging active with `waiting_for_power` and exactly `0 kW`.
+
+Session creation itself is still accepted: admission here means participation in the current power allocation, not whether the session exists. This keeps the waiting session visible and lets every accepted state change reconsider it automatically.
 
 This ordering is used only for minimum admission. It is not first-come-first-served allocation after sessions are admitted.
 
