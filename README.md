@@ -184,7 +184,7 @@ This favors simple consistency over parallel mutation throughput, which is appro
 
 Session connect/start, power-change, disconnect/stop, availability, and BESS tick requests all perform this recomputation inline. This is the implementation of the brief's real-time reaction requirement rather than an asynchronous or eventually consistent process.
 
-The lifecycle benchmark exercises the complete successful HTTP flow—including configuration, session lifecycle, availability events, OPS reads, and a BESS tick. A representative Apple M4 Pro run completed the entire sequence in roughly `0.1 ms/op`, comfortably below the brief's one-second reaction requirement. Exact numbers depend on hardware; run the benchmark locally rather than treating this measurement as a guarantee.
+The reaction path is intentionally short and non-blocking: it performs validation, an in-memory allocation, and a state update under one mutex, with no database, network dependency, queue, retry, or background wait. The lifecycle benchmark exercises the complete successful HTTP flow as a local regression and sanity check; it is not presented as a cross-device SLA measurement.
 
 ## Tests and runnable scenarios
 
@@ -197,7 +197,7 @@ go vet ./...
 go build ./...
 ```
 
-Run the complete lifecycle benchmark:
+Optionally run the complete lifecycle benchmark:
 
 ```bash
 go test ./internal/api -run '^$' -bench BenchmarkSessionLifecycle -benchtime=100x

@@ -227,6 +227,6 @@ Equivalent configuration and session state therefore produce equivalent assignme
 
 Preparing lookup state and sorting sessions costs `O(n log n)` for `n` sessions. Fair distribution repeatedly scans the active-session set as sessions reach demand levels or charger limits. For the small number of connectors at one station, this direct approach is comfortably within the reaction target and is easier to audit than a more optimized data structure.
 
-The lifecycle benchmark completes an entire multi-request HTTP flow in roughly `0.1 ms` on the documented development machine, so allocator optimization would be premature.
+The optional lifecycle benchmark provides a local regression signal, but no cross-device timing claim is necessary. The allocator operates entirely in memory over a station-sized input, so a more optimized data structure would be premature.
 
 The policy deliberately does not include customer tiers, reservations, fleet ownership, tariff optimization, or vehicle-SoC priority. Those policies could be layered onto admission in a different product, but adding them here would make fairness less transparent and invent requirements not present in the assignment.

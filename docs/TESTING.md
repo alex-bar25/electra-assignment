@@ -282,7 +282,7 @@ This scenario verifies that malformed or conflicting events cannot leave the sta
 
 ---
 
-### 13. Synchronous HTTP lifecycle remains below one second
+### 13. Synchronous HTTP lifecycle remains responsive
 
 **Setup**
 
@@ -296,11 +296,11 @@ Each benchmark operation creates a fresh station service and exercises the compl
 
 **Expected result**
 
-The reported `ns/op` for the entire request sequence remains below `1,000,000,000 ns` (one second). This is a stricter demonstration than measuring the brief's limit independently for each accepted event.
+The benchmark completes without an unexpectedly slow or blocking operation. Its timing is informational and will vary by machine; there is no cross-device pass/fail threshold.
 
 **Why this scenario matters**
 
-This demonstrates that accepted HTTP state changes and their synchronous allocation recomputations comfortably satisfy the reaction-time requirement without relying on sleeps or wall-clock-sensitive tests.
+This is a lightweight regression check for the deliberately short in-memory reaction path. The functional guarantee comes from the design: accepted events validate, mutate, recompute, and return inline without external I/O, queues, sleeps, or background processing.
 
 ---
 
@@ -415,7 +415,7 @@ go test ./internal/api -run '^$' -bench BenchmarkSessionLifecycle -benchtime=100
 
 One benchmark operation creates a fresh service and exercises health, BESS configuration and tick, station query, session start/update/stop, connector outage/restoration, and charger outage/restoration through the real router.
 
-The brief requires accepted events to react within one second. A representative Apple M4 Pro run completes this entire multi-request sequence in roughly `0.1 ms/op`. The exact value is environment-dependent; the meaningful threshold is `1,000,000,000 ns/op`, and the local command is the authoritative measurement for a reviewer's machine.
+Treat the reported timing as a local regression and sanity signal, not a portable SLA. The brief's approximately one-second target communicates that events should feel real-time; this implementation addresses that by keeping recomputation synchronous, in memory, and free of blocking external dependencies.
 
 ### Docker and Python scenario
 
