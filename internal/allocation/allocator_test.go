@@ -42,9 +42,18 @@ func TestAllocateRespectsEffectiveDemandLimits(t *testing.T) {
 				ChargingCurveLimitKw: test.curve,
 			}}
 
-			assertPower(t, Allocate(config, sessions), "session-1", test.wantPower)
+			assertPower(t, Allocate(config, sessions, config.GridCapacityKw), "session-1", test.wantPower)
 		})
 	}
+}
+
+func TestAllocateUsesExplicitStationSupply(t *testing.T) {
+	config := stationWithOneCharger(100, 250, 180)
+	sessions := []domain.Session{testSession("session-1", "connector-1", 300)}
+
+	assignments := Allocate(config, sessions, 300)
+
+	assertPower(t, assignments, "session-1", 180)
 }
 
 func TestAllocateSharesAndRedistributesGridPower(t *testing.T) {
@@ -55,7 +64,7 @@ func TestAllocateSharesAndRedistributesGridPower(t *testing.T) {
 			testSession("session-2", "connector-2", 100),
 		}
 
-		assignments := Allocate(config, sessions)
+		assignments := Allocate(config, sessions, config.GridCapacityKw)
 		assertPower(t, assignments, "session-1", 50)
 		assertPower(t, assignments, "session-2", 50)
 	})
@@ -67,7 +76,7 @@ func TestAllocateSharesAndRedistributesGridPower(t *testing.T) {
 			testSession("session-2", "connector-2", 100),
 		}
 
-		assignments := Allocate(config, sessions)
+		assignments := Allocate(config, sessions, config.GridCapacityKw)
 		assertPower(t, assignments, "session-1", 20)
 		assertPower(t, assignments, "session-2", 80)
 	})
@@ -81,7 +90,7 @@ func TestAllocateRedistributesAcrossThreeDemandLevels(t *testing.T) {
 		testSession("session-3", "connector-3", 300),
 	}
 
-	assignments := Allocate(config, sessions)
+	assignments := Allocate(config, sessions, config.GridCapacityKw)
 	assertPower(t, assignments, "session-1", 50)
 	assertPower(t, assignments, "session-2", 120)
 	assertPower(t, assignments, "session-3", 130)
@@ -103,7 +112,7 @@ func TestAllocateRespectsSharedChargerLimit(t *testing.T) {
 		testSession("session-3", "connector-3", 200),
 	}
 
-	assignments := Allocate(config, sessions)
+	assignments := Allocate(config, sessions, config.GridCapacityKw)
 	assertPower(t, assignments, "session-1", 50)
 	assertPower(t, assignments, "session-2", 50)
 	assertPower(t, assignments, "session-3", 100)
@@ -123,7 +132,7 @@ func TestAllocateRedistributesPastFullCharger(t *testing.T) {
 		testSession("session-2", "connector-2", 100),
 	}
 
-	assignments := Allocate(config, sessions)
+	assignments := Allocate(config, sessions, config.GridCapacityKw)
 	assertPower(t, assignments, "session-1", 5)
 	assertPower(t, assignments, "session-2", 95)
 }
@@ -136,7 +145,7 @@ func TestAllocateReturnsZeroForUnavailableHardware(t *testing.T) {
 		testSession("session-2", "connector-2", 100),
 	}
 
-	assignments := Allocate(config, sessions)
+	assignments := Allocate(config, sessions, config.GridCapacityKw)
 	assertPower(t, assignments, "session-1", 100)
 	assertPower(t, assignments, "session-2", 0)
 }
@@ -149,8 +158,8 @@ func TestAllocateProducesStableOutput(t *testing.T) {
 	}
 	reverse := []domain.Session{forward[1], forward[0]}
 
-	first := Allocate(config, forward)
-	second := Allocate(config, reverse)
+	first := Allocate(config, forward, config.GridCapacityKw)
+	second := Allocate(config, reverse, config.GridCapacityKw)
 	if !reflect.DeepEqual(first, second) {
 		t.Fatalf("Allocate() differs by input order:\nfirst:  %#v\nsecond: %#v", first, second)
 	}
@@ -164,7 +173,7 @@ func TestAllocateWaitsWhenMinimumCannotBeReserved(t *testing.T) {
 	second := testSession("session-2", "connector-2", 100)
 	second.StartedAt = start.Add(time.Second)
 
-	assignments := Allocate(config, []domain.Session{second, first})
+	assignments := Allocate(config, []domain.Session{second, first}, config.GridCapacityKw)
 	assertAssignment(t, assignments, "session-1", 5, domain.SessionStatusCharging)
 	assertAssignment(t, assignments, "session-2", 0, domain.SessionStatusWaitingForPower)
 }
@@ -174,7 +183,7 @@ func TestAllocateUsesSessionIDToBreakAdmissionTies(t *testing.T) {
 	sessionB := testSession("session-b", "connector-1", 100)
 	sessionA := testSession("session-a", "connector-2", 100)
 
-	assignments := Allocate(config, []domain.Session{sessionB, sessionA})
+	assignments := Allocate(config, []domain.Session{sessionB, sessionA}, config.GridCapacityKw)
 	assertAssignment(t, assignments, "session-a", 5, domain.SessionStatusCharging)
 	assertAssignment(t, assignments, "session-b", 0, domain.SessionStatusWaitingForPower)
 }
@@ -186,7 +195,7 @@ func TestAllocateKeepsFinalAllocationsFairAfterMinimums(t *testing.T) {
 	second := testSession("session-2", "connector-2", 100)
 	second.MinimumPowerKw = 5
 
-	assignments := Allocate(config, []domain.Session{first, second})
+	assignments := Allocate(config, []domain.Session{first, second}, config.GridCapacityKw)
 	assertAssignment(t, assignments, "session-1", 15, domain.SessionStatusCharging)
 	assertAssignment(t, assignments, "session-2", 15, domain.SessionStatusCharging)
 }

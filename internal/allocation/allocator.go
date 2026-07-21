@@ -34,10 +34,10 @@ type allocationState struct {
 	status    domain.SessionStatus
 }
 
-func Allocate(config domain.StationConfig, sessions []domain.Session) []Assignment {
+func Allocate(config domain.StationConfig, sessions []domain.Session, availableStationPowerKw float64) []Assignment {
 	states, remainingByCharger := prepareAllocation(config, sessions)
-	remainingGrid := admitSessions(states, config.GridCapacityKw, remainingByCharger)
-	distributePower(states, remainingGrid, remainingByCharger)
+	remainingSupply := admitSessions(states, availableStationPowerKw, remainingByCharger)
+	distributePower(states, remainingSupply, remainingByCharger)
 	return assignmentsFromStates(states)
 }
 
@@ -70,7 +70,7 @@ func prepareAllocation(config domain.StationConfig, sessions []domain.Session) (
 	return states, remainingByCharger
 }
 
-func admitSessions(states []allocationState, remainingGrid float64, remainingByCharger map[string]float64) float64 {
+func admitSessions(states []allocationState, remainingSupply float64, remainingByCharger map[string]float64) float64 {
 	priority := make([]int, 0, len(states))
 	for index := range states {
 		if states[index].eligible {
@@ -88,20 +88,20 @@ func admitSessions(states []allocationState, remainingGrid float64, remainingByC
 	for _, index := range priority {
 		state := &states[index]
 		if state.minimumKw > state.demandKw+epsilon ||
-			state.minimumKw > remainingGrid+epsilon ||
+			state.minimumKw > remainingSupply+epsilon ||
 			state.minimumKw > remainingByCharger[state.chargerID]+epsilon {
 			continue
 		}
 		state.assigned = state.minimumKw
 		state.status = domain.SessionStatusCharging
 		state.active = state.demandKw-state.assigned > epsilon
-		remainingGrid -= state.minimumKw
+		remainingSupply -= state.minimumKw
 		remainingByCharger[state.chargerID] -= state.minimumKw
 	}
-	return remainingGrid
+	return remainingSupply
 }
 
-func distributePower(states []allocationState, remainingGrid float64, remainingByCharger map[string]float64) {
+func distributePower(states []allocationState, remainingSupply float64, remainingByCharger map[string]float64) {
 	for index := range states {
 		if states[index].active && remainingByCharger[states[index].chargerID] <= epsilon {
 			states[index].active = false
@@ -112,11 +112,11 @@ func distributePower(states []allocationState, remainingGrid float64, remainingB
 	// reach a physical limit. This preserves max-min fairness after minimums.
 	for {
 		lowestAssigned, activeCount, activeByCharger, nextAssigned := lowestActiveGroup(states)
-		if activeCount == 0 || remainingGrid <= epsilon {
+		if activeCount == 0 || remainingSupply <= epsilon {
 			break
 		}
 
-		step := remainingGrid / float64(activeCount)
+		step := remainingSupply / float64(activeCount)
 		if !math.IsInf(nextAssigned, 1) {
 			step = minimum(step, nextAssigned-lowestAssigned)
 		}
@@ -136,7 +136,7 @@ func distributePower(states []allocationState, remainingGrid float64, remainingB
 				continue
 			}
 			states[index].assigned += step
-			remainingGrid -= step
+			remainingSupply -= step
 			remainingByCharger[states[index].chargerID] -= step
 		}
 
