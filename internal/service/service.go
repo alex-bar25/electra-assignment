@@ -11,6 +11,7 @@ import (
 var (
 	ErrStationNotConfigured = errors.New("station is not configured")
 	ErrDuplicateSession     = errors.New("session already exists")
+	ErrChargerNotFound      = errors.New("charger not found")
 	ErrConnectorNotFound    = errors.New("connector not found")
 	ErrConnectorOccupied    = errors.New("connector is occupied")
 	ErrHardwareUnavailable  = errors.New("charger or connector is unavailable")
