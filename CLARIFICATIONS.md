@@ -63,3 +63,13 @@ Cut off the lowest-priority/newest session so remaining sessions stay above thei
 Queue it: let it wait for power to free up rather than start a session that can't get minimum viable power.
 Give it the minimum and shrink others further if there's room, accepting slight unfairness.
 Pick one, state the trade-off (fairness vs usability vs simplicity), and move on. It's a good edge case to call out explicitly in your write-up even if your implementation handles it simply.
+
+# would you consider those out of scope? session-history or failure-tracking subsystem
+
+Yes, I'd consider a dedicated session-history or failure-tracking subsystem out of scope. The brief asks for live state visibility for OPS, not historical reporting or incident-tracking tooling. Basic logging of what happened (for your own debugging and for us to review your reasoning) is good enough, you don't need to build persistence, historical queries, or a failure-analytics layer around it. Spend that time on the core allocation logic instead.
+
+# is this good behaviour in scope? When changed to unavailable:Remove affected active sessions , Recompute remaining allocations under the same mutex , Return updated OPS station state
+
+The behavior itself (freeing sessions on unavailability, recomputing allocations, updating the state OPS sees) is exactly the right in-scope behavior, yes, that matches what we discussed.
+
+The "same mutex" part is an implementation detail (concurrency control), that's your engineering call and not something I'll weigh in on. Just make sure the end result is consistent: no stale allocations, no race where OPS sees an inconsistent snapshot mid-update.
