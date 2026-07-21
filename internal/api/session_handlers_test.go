@@ -192,6 +192,58 @@ func TestUpdateSessionRejectsInvalidRequests(t *testing.T) {
 	}
 }
 
+func TestStopSessionRedistributesAllocations(t *testing.T) {
+	station := service.New()
+	if err := station.Configure(testStationConfig()); err != nil {
+		t.Fatalf("configure station: %v", err)
+	}
+	for _, session := range []domain.Session{
+		{ID: "session-1", ConnectorID: "connector-1", RequestedPowerKw: 100, VehicleMaxPowerKw: 100},
+		{ID: "session-2", ConnectorID: "connector-2", RequestedPowerKw: 100, VehicleMaxPowerKw: 100},
+	} {
+		if _, err := station.StartSession(session); err != nil {
+			t.Fatalf("start %s: %v", session.ID, err)
+		}
+	}
+	handler := New(station, slog.New(slog.DiscardHandler))
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/api/v1/sessions/session-1", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var state service.StationState
+	if err := json.NewDecoder(response.Body).Decode(&state); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(state.Sessions) != 1 || state.Sessions[0].ID != "session-2" || state.Sessions[0].AssignedPowerKw != 100 {
+		t.Fatalf("state sessions = %#v, want session-2 at 100 kW", state.Sessions)
+	}
+}
+
+func TestStopSessionReturnsNotFound(t *testing.T) {
+	station := service.New()
+	if err := station.Configure(testStationConfig()); err != nil {
+		t.Fatalf("configure station: %v", err)
+	}
+	handler := New(station, slog.New(slog.DiscardHandler))
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/api/v1/sessions/missing", nil))
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusNotFound, response.Body.String())
+	}
+	var body errorResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Code != "session_not_found" {
+		t.Fatalf("error code = %q, want session_not_found", body.Code)
+	}
+}
+
 func testStationConfig() domain.StationConfig {
 	return domain.StationConfig{
 		ID:             "station-1",

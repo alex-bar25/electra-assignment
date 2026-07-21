@@ -20,5 +20,6 @@ func New(station *service.Service, logger *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /api/v1/station", api.getStation)
 	mux.HandleFunc("POST /api/v1/sessions", api.startSession)
 	mux.HandleFunc("PATCH /api/v1/sessions/{sessionId}", api.updateSession)
+	mux.HandleFunc("DELETE /api/v1/sessions/{sessionId}", api.stopSession)
 	return mux
 }

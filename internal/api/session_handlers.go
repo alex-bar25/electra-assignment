@@ -78,6 +78,17 @@ func (api handler) updateSession(response http.ResponseWriter, request *http.Req
 	api.writeJSON(response, http.StatusOK, session)
 }
 
+func (api handler) stopSession(response http.ResponseWriter, request *http.Request) {
+	state, err := api.station.StopSession(request.PathValue("sessionId"))
+	if err != nil {
+		api.writeSessionError(response, "stop", err)
+		return
+	}
+
+	api.logger.Info("session stopped", "session_id", request.PathValue("sessionId"))
+	api.writeJSON(response, http.StatusOK, state)
+}
+
 func (api handler) writeSessionError(response http.ResponseWriter, operation string, err error) {
 	status := http.StatusBadRequest
 	code := "invalid_session"
