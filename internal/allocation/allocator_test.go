@@ -141,17 +141,57 @@ func TestAllocateReturnsZeroForUnavailableHardware(t *testing.T) {
 }
 
 func TestAllocateProducesStableOutput(t *testing.T) {
-	config := stationWithOneCharger(100, 200, 200, 200)
-	forward := []domain.Session{
-		testSession("session-1", "connector-1", 100),
-		testSession("session-2", "connector-2", 100),
+	forwardConfig := domain.StationConfig{
+		ID:             "station-1",
+		GridCapacityKw: 300,
+		Chargers: []domain.ChargerConfig{
+			{
+				ID:         "charger-1",
+				MaxPowerKw: 140,
+				Status:     domain.OperationalStatusAvailable,
+				Connectors: []domain.ConnectorConfig{
+					{ID: "connector-1", Type: "CCS", MaxPowerKw: 200, Status: domain.OperationalStatusAvailable},
+					{ID: "connector-2", Type: "CCS", MaxPowerKw: 200, Status: domain.OperationalStatusAvailable},
+				},
+			},
+			{
+				ID:         "charger-2",
+				MaxPowerKw: 200,
+				Status:     domain.OperationalStatusAvailable,
+				Connectors: []domain.ConnectorConfig{
+					{ID: "connector-3", Type: "CCS", MaxPowerKw: 200, Status: domain.OperationalStatusAvailable},
+					{ID: "connector-4", Type: "CCS", MaxPowerKw: 200, Status: domain.OperationalStatusAvailable},
+				},
+			},
+		},
 	}
-	reverse := []domain.Session{forward[1], forward[0]}
+	reverseConfig := forwardConfig
+	reverseConfig.Chargers = []domain.ChargerConfig{
+		forwardConfig.Chargers[1],
+		forwardConfig.Chargers[0],
+	}
+	for i := range reverseConfig.Chargers {
+		connectors := reverseConfig.Chargers[i].Connectors
+		reverseConfig.Chargers[i].Connectors = []domain.ConnectorConfig{connectors[1], connectors[0]}
+	}
 
-	first := Allocate(config, forward, config.GridCapacityKw)
-	second := Allocate(config, reverse, config.GridCapacityKw)
+	forwardSessions := []domain.Session{
+		testSession("session-1", "connector-1", 200),
+		testSession("session-2", "connector-2", 80),
+		testSession("session-3", "connector-3", 200),
+		testSession("session-4", "connector-4", 40),
+	}
+	reverseSessions := []domain.Session{
+		forwardSessions[3],
+		forwardSessions[2],
+		forwardSessions[1],
+		forwardSessions[0],
+	}
+
+	first := Allocate(forwardConfig, forwardSessions, forwardConfig.GridCapacityKw)
+	second := Allocate(reverseConfig, reverseSessions, reverseConfig.GridCapacityKw)
 	if !reflect.DeepEqual(first, second) {
-		t.Fatalf("Allocate() differs by input order:\nfirst:  %#v\nsecond: %#v", first, second)
+		t.Fatalf("Allocate() differs by configuration or session order:\nfirst:  %#v\nsecond: %#v", first, second)
 	}
 }
 
